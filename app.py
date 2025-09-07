@@ -10,7 +10,8 @@ import uvicorn
 
 # Database imports
 from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, inspect, Boolean, DateTime
-from sqlalchemy.orm import sessionmaker, declarative_base, relationship
+from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import SQLAlchemyError
 
 # Utility imports
