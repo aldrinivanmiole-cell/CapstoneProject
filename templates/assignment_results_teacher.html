@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% block title %}Assignment Results - {{ assignment.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Assignment Header -->
+    <div class="row mb-4" data-aos="fade-down">
+        <div class="col-12">
+            <div class="glass-card p-4">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h1 class="gradient-text mb-2">{{ assignment.title }}</h1>
+                        <p class="text-muted mb-0">
+                            <i class="material-icons me-2">class</i>{{ assignment.class_.name }} - {{ assignment.class_.section }}
+                        </p>
+                    </div>
+                    <div class="text-end">
+                        <a href="{{ url_for('view_assignment', assignment_id=assignment.id) }}" 
+                           class="btn btn-outline-primary btn-hover ripple"
+                           data-aos="zoom-in" data-aos-delay="200">
+                            <i class="material-icons me-2">visibility</i>View Assignment
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    {% if submissions %}
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3" data-aos="fade-up" data-aos-delay="100">
+            <div class="glass-card p-3 text-center">
+                <i class="material-icons gradient-text display-6 mb-2">people</i>
+                <h3 class="mb-1">{{ submissions|length }}</h3>
+                <p class="text-muted mb-0">Total Submissions</p>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3" data-aos="fade-up" data-aos-delay="200">
+            <div class="glass-card p-3 text-center">
+                <i class="material-icons text-success display-6 mb-2">trending_up</i>
+                {% set avg_score = (submissions | sum(attribute='score')) / submissions|length %}
+                <h3 class="mb-1">{{ "%.1f"|format(avg_score) }}</h3>
+                <p class="text-muted mb-0">Average Score</p>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3" data-aos="fade-up" data-aos-delay="300">
+            <div class="glass-card p-3 text-center">
+                <i class="material-icons text-warning display-6 mb-2">star</i>
+                {% set avg_percentage = ((submissions | sum(attribute='score')) / (submissions | sum(attribute='total_points')) * 100) if (submissions | sum(attribute='total_points')) > 0 else 0 %}
+                <h3 class="mb-1">{{ "%.1f"|format(avg_percentage) }}%</h3>
+                <p class="text-muted mb-0">Average Percentage</p>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3" data-aos="fade-up" data-aos-delay="400">
+            <div class="glass-card p-3 text-center">
+                <i class="material-icons text-info display-6 mb-2">emoji_events</i>
+                {% set highest_score = submissions | max(attribute='score') %}
+                <h3 class="mb-1">{{ highest_score.score }}</h3>
+                <p class="text-muted mb-0">Highest Score</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Submissions Table -->
+    <div class="row" data-aos="fade-up" data-aos-delay="500">
+        <div class="col-12">
+            <div class="glass-card p-4">
+                <h4 class="mb-4">
+                    <i class="material-icons me-2">assignment_turned_in</i>Student Submissions
+                </h4>
+                
+                {% if submissions %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th><i class="material-icons me-2">person</i>Student</th>
+                                <th><i class="material-icons me-2">email</i>Email</th>
+                                <th><i class="material-icons me-2">score</i>Score</th>
+                                <th><i class="material-icons me-2">percent</i>Percentage</th>
+                                <th><i class="material-icons me-2">grade</i>Grade</th>
+                                <th><i class="material-icons me-2">schedule</i>Submitted</th>
+                                <th><i class="material-icons me-2">visibility</i>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for submission in submissions %}
+                            {% set student = submission.student %}
+                            {% set percentage = (submission.score / submission.total_points * 100) if submission.total_points > 0 else 0 %}
+                            {% if percentage >= 90 %}
+                                {% set grade = "A" %}
+                                {% set grade_class = "success" %}
+                            {% elif percentage >= 80 %}
+                                {% set grade = "B" %}
+                                {% set grade_class = "info" %}
+                            {% elif percentage >= 70 %}
+                                {% set grade = "C" %}
+                                {% set grade_class = "warning" %}
+                            {% elif percentage >= 60 %}
+                                {% set grade = "D" %}
+                                {% set grade_class = "secondary" %}
+                            {% else %}
+                                {% set grade = "F" %}
+                                {% set grade_class = "danger" %}
+                            {% endif %}
+                            
+                            <tr class="table-row-hover">
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="avatar-circle me-2">
+                                            {{ student.name[0].upper() }}
+                                        </div>
+                                        {{ student.name }}
+                                    </div>
+                                </td>
+                                <td>{{ student.email }}</td>
+                                <td>
+                                    <strong>{{ submission.score }}</strong> / {{ submission.total_points }}
+                                </td>
+                                <td>
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar bg-{{ grade_class }}" 
+                                             role="progressbar" 
+                                             style="width: {{ percentage }}%"
+                                             aria-valuenow="{{ percentage }}" 
+                                             aria-valuemin="0" 
+                                             aria-valuemax="100">
+                                            {{ "%.1f"|format(percentage) }}%
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ grade_class }} fs-6">{{ grade }}</span>
+                                </td>
+                                <td>
+                                    {% if submission.submitted_at %}
+                                        {{ submission.submitted_at.strftime('%Y-%m-%d %H:%M') }}
+                                    {% else %}
+                                        <span class="text-muted">Unknown</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary btn-hover ripple"
+                                            onclick="viewSubmissionDetails({{ submission.id }})">
+                                        <i class="material-icons">visibility</i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="material-icons display-1 text-muted mb-3">assignment_late</i>
+                    <h4 class="text-muted">No Submissions Yet</h4>
+                    <p class="text-muted">Students haven't submitted this assignment yet.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Submission Details Modal -->
+<div class="modal fade" id="submissionModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content glass-modal">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="material-icons me-2">assignment_turned_in</i>Submission Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="submissionDetailsBody">
+                <div class="text-center py-3">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+.avatar-circle {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 16px;
+}
+
+.table-row-hover:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+    transition: all 0.3s ease;
+}
+
+.progress {
+    background-color: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.glass-modal .modal-content {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function viewSubmissionDetails(submissionId) {
+    const modal = new bootstrap.Modal(document.getElementById('submissionModal'));
+    const modalBody = document.getElementById('submissionDetailsBody');
+    
+    // Show loading
+    modalBody.innerHTML = `
+        <div class="text-center py-3">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // TODO: Implement AJAX call to fetch submission details
+    // For now, show placeholder
+    setTimeout(() => {
+        modalBody.innerHTML = `
+            <div class="alert alert-info">
+                <i class="material-icons me-2">info</i>
+                Detailed submission view will be implemented here.
+            </div>
+        `;
+    }, 1000);
+}
+
+// Add ripple effect to buttons
+document.querySelectorAll('.ripple').forEach(button => {
+    button.addEventListener('click', function(e) {
+        const ripple = document.createElement('span');
+        const rect = this.getBoundingClientRect();
+        const size = Math.max(rect.width, rect.height);
+        const x = e.clientX - rect.left - size / 2;
+        const y = e.clientY - rect.top - size / 2;
+        
+        ripple.style.width = ripple.style.height = size + 'px';
+        ripple.style.left = x + 'px';
+        ripple.style.top = y + 'px';
+        ripple.classList.add('ripple-effect');
+        
+        this.appendChild(ripple);
+        
+        setTimeout(() => {
+            ripple.remove();
+        }, 600);
+    });
+});
+</script>
+{% endblock %}

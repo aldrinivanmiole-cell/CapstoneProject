@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}{{ assignment.title }} - View assignment{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="text-center mb-4">
+    <h1 class="h3 mb-2">{{ assignment.title }}</h1>
+    <p class="text-muted mb-0">{{ assignment.class_.name }} • {{ questions|length }} question{{ 's' if questions|length != 1 else '' }}</p>
+    {% if assignment.description %}
+    <div class="alert alert-info mt-3">{{ assignment.description }}</div>
+    {% endif %}
+  </div>
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h1 class="h4 mb-1">{{ assignment.title }}</h1>
+      <p class="text-muted mb-0">{{ assignment.class_.subject }} • {{ questions|length }} question{{ 's' if questions|length != 1 else '' }}</p>
+    </div>
+    <div class="btn-group">
+      <a href="{{ url_for('assignment_monitor', assignment_id=assignment.id) }}" class="btn btn-primary">
+        <span class="material-icons align-middle me-1" style="font-size: 18px;">analytics</span>
+        Monitor Progress
+      </a>
+      <a href="{{ url_for('edit_assignment', assignment_id=assignment.id) }}" class="btn btn-outline-primary">
+        <span class="material-icons align-middle me-1" style="font-size: 18px;">edit</span>
+        Edit
+      </a>
+      <button class="btn btn-outline-danger" onclick="deleteassignment({{ assignment.id }}, '{{ assignment.title }}')">
+        <span class="material-icons align-middle me-1" style="font-size: 18px;">delete</span>
+        Delete
+      </button>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-8">
+      {% for question in questions %}
+      <div class="card mb-4">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-3">
+            <h5 class="card-title mb-0">Question {{ loop.index }}</h5>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge bg-secondary">{{ question.question_type.replace('_', ' ').title() }}</span>
+              <span class="badge bg-primary">{{ question.points }} point{{ 's' if question.points != 1 else '' }}</span>
+            </div>
+          </div>
+          
+          <p class="card-text">{{ question.question_text }}</p>
+          
+          {% if question.help_video_url %}
+          <div class="alert alert-info mb-3">
+            <div class="d-flex align-items-center">
+              <span class="material-icons me-2">play_circle</span>
+              <div>
+                <strong>Help Video:</strong> 
+                <a href="{{ question.help_video_url }}" target="_blank" class="text-decoration-none">
+                  {{ question.help_video_url }}
+                  <span class="material-icons align-middle ms-1" style="font-size: 16px;">open_in_new</span>
+                </a>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+          
+          {% if question.question_type == 'multiple_choice' %}
+            <h6 class="mt-3 mb-2">Options:</h6>
+            <ul class="list-unstyled">
+              {% for option in question.options %}
+              <li class="mb-1">
+                <span class="badge bg-light text-dark me-2">{{ loop.index }}</span>
+                {{ option.option_text }}
+                {% if option.option_text in question.correct_answers|map(attribute='answer_text')|list %}
+                  <span class="material-icons text-success ms-2" style="font-size: 16px;">check_circle</span>
+                {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+            
+          {% elif question.question_type == 'enumeration' %}
+            <h6 class="mt-3 mb-2">Correct answers:</h6>
+            <ul class="list-unstyled">
+              {% for answer in question.correct_answers %}
+              <li class="mb-1">
+                <span class="material-icons text-success me-2" style="font-size: 16px;">check_circle</span>
+                {{ answer.answer_text }}
+              </li>
+              {% endfor %}
+            </ul>
+            
+          {% elif question.question_type == 'problem_solving' %}
+            <h6 class="mt-3 mb-2">Correct answer:</h6>
+            <div class="alert alert-success">
+              <span class="material-icons me-2">check_circle</span>
+              {{ question.correct_answers[0].answer_text if question.correct_answers else 'No answer provided' }}
+            </div>
+            
+          {% elif question.question_type == 'identification' %}
+            <h6 class="mt-3 mb-2">Correct answer:</h6>
+            <div class="alert alert-info">
+              <span class="material-icons me-2">lightbulb</span>
+              {{ question.correct_answers[0].answer_text if question.correct_answers else 'No answer provided' }}
+            </div>
+            
+          {% elif question.question_type == 'essay' %}
+            <div class="alert alert-warning mt-3">
+              <span class="material-icons me-2">edit</span>
+              This is an essay question that requires manual grading.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      
+      {% if not questions %}
+      <div class="text-center py-5">
+        <span class="material-icons display-1 text-muted mb-3">assignment</span>
+        <h3 class="h5 mb-3">No questions yet</h3>
+        <p class="text-muted mb-4">Add questions to this assignment to get started</p>
+        <a href="{{ url_for('edit_assignment', assignment_id=assignment.id) }}" class="btn btn-primary">Add Questions</a>
+      </div>
+      {% endif %}
+    </div>
+    
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <h6 class="card-title">assignment Summary</h6>
+          <div class="row text-center">
+            <div class="col-6">
+              <div class="h4 mb-0">{{ questions|length }}</div>
+              <small class="text-muted">Questions</small>
+            </div>
+            <div class="col-6">
+              <div class="h4 mb-0">{{ questions|sum(attribute='points') }}</div>
+              <small class="text-muted">Total Points</small>
+            </div>
+          </div>
+          <hr>
+          <div class="d-grid">
+            <a href="{{ url_for('take_assignment', assignment_id=assignment.id) }}" class="btn btn-success mb-2">
+              <span class="material-icons align-middle me-1" style="font-size: 18px;">visibility</span>
+              Preview as Student
+            </a>
+            <a href="{{ url_for('assignment_monitor', assignment_id=assignment.id) }}" class="btn btn-primary mb-2">
+              <span class="material-icons align-middle me-1" style="font-size: 18px;">analytics</span>
+              Monitor Progress
+            </a>
+            <button class="btn btn-outline-secondary" onclick="copyassignmentLink()">
+              <span class="material-icons align-middle me-1" style="font-size: 18px;">link</span>
+              Copy Link
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mt-4">
+  <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+    <span class="material-icons align-middle me-1" style="font-size: 18px;">arrow_back</span>
+    Back to Classes
+  </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function deleteassignment(assignmentId, assignmentTitle) {
+  if (confirm(`Are you sure you want to delete "${assignmentTitle}"? This action cannot be undone.`)) {
+    window.location.href = `/delete_assignment/${assignmentId}`;
+  }
+}
+
+function copyassignmentLink() {
+  const link = `${window.location.origin}/take_assignment/{{ assignment.id }}`;
+  navigator.clipboard.writeText(link).then(() => {
+    alert('assignment link copied to clipboard!');
+  });
+}
+</script>
+{% endblock %} 

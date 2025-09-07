@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+{% block title %}{{ assignment.title }} - Monitor{% endblock %}
+
+{% block extra_styles %}
+<style>
+.progress-circle {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: conic-gradient(#28a745 0deg {{ stats.completion_rate * 3.6 }}deg, #e9ecef {{ stats.completion_rate * 3.6 }}deg 360deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+.progress-circle::before {
+    content: '';
+    position: absolute;
+    width: 80%;
+    height: 80%;
+    border-radius: 50%;
+    background: white;
+}
+.progress-text {
+    position: relative;
+    z-index: 1;
+    font-weight: bold;
+    font-size: 12px;
+}
+.student-row {
+    transition: all 0.2s ease;
+}
+.student-row:hover {
+    background-color: #f8f9fa;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.grade-badge {
+    min-width: 60px;
+    font-weight: bold;
+}
+.question-indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+    margin: 1px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Classes</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('class_info', class_id=assignment.class_id) }}">{{ assignment.class_.name }}</a></li>
+                    <li class="breadcrumb-item active">{{ assignment.title }}</li>
+                </ol>
+            </nav>
+            <h1 class="h3 mb-1">{{ assignment.title }}</h1>
+            <p class="text-muted mb-0">{{ assignment.class_.name }} • {{ assignment.questions|length }} questions • {{ stats.total_points }} points</p>
+        </div>
+        <div class="btn-group">
+            <a href="{{ url_for('view_assignment', assignment_id=assignment.id) }}" class="btn btn-outline-secondary">
+                <i class="material-icons me-1">visibility</i>Preview
+            </a>
+            <a href="{{ url_for('edit_assignment', assignment_id=assignment.id) }}" class="btn btn-outline-primary">
+                <i class="material-icons me-1">edit</i>Edit
+            </a>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="progress-circle mx-auto mb-2">
+                        <span class="progress-text">{{ "%.0f"|format(stats.completion_rate) }}%</span>
+                    </div>
+                    <h6 class="card-title mb-0">Completion Rate</h6>
+                    <small class="text-muted">{{ stats.submitted_count }}/{{ stats.total_students }} submitted</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <h3 class="text-primary mb-1">{{ "%.1f"|format(stats.avg_percentage) }}%</h3>
+                    <h6 class="card-title mb-0">Average Score</h6>
+                    <small class="text-muted">{{ "%.1f"|format(stats.avg_score) }}/{{ stats.total_points }} points</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <h3 class="text-success mb-1">{{ "%.1f"|format(stats.highest_score) }}</h3>
+                    <h6 class="card-title mb-0">Highest Score</h6>
+                    <small class="text-muted">{{ "%.1f"|format((stats.highest_score / stats.total_points * 100) if stats.total_points > 0 else 0) }}%</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <h3 class="text-warning mb-1">{{ "%.1f"|format(stats.lowest_score) }}</h3>
+                    <h6 class="card-title mb-0">Lowest Score</h6>
+                    <small class="text-muted">{{ "%.1f"|format((stats.lowest_score / stats.total_points * 100) if stats.total_points > 0 else 0) }}%</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Student Results -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 py-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Student Results</h5>
+                <div class="d-flex gap-2">
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                            <i class="material-icons me-1">filter_list</i>Filter
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="filterResults('all')">All Students</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="filterResults('submitted')">Submitted Only</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="filterResults('not_submitted')">Not Submitted</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" onclick="filterResults('high_scores')">High Scores (≥90%)</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="filterResults('low_scores')">Needs Help (<70%)</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="border-0">Student</th>
+                            <th class="border-0">Status</th>
+                            <th class="border-0">Score</th>
+                            <th class="border-0">Questions</th>
+                            <th class="border-0">Submitted</th>
+                            <th class="border-0">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for result in student_results %}
+                        <tr class="student-row" data-status="{{ result.status }}" data-percentage="{{ result.percentage }}">
+                            <td class="py-3">
+                                <div class="d-flex align-items-center">
+                                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                                        {{ result.student.name[0].upper() }}
+                                    </div>
+                                    <div>
+                                        <div class="fw-medium">{{ result.student.name }}</div>
+                                        <small class="text-muted">{{ result.student.email }}</small>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="py-3">
+                                {% if result.status == 'submitted' %}
+                                    <span class="badge bg-success">Submitted</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Not Submitted</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3">
+                                {% if result.status == 'submitted' %}
+                                    {% set grade_class = 'success' if result.percentage >= 90 else 'primary' if result.percentage >= 80 else 'warning' if result.percentage >= 70 else 'danger' %}
+                                    <span class="badge bg-{{ grade_class }} grade-badge">{{ "%.1f"|format(result.percentage) }}%</span>
+                                    <br><small class="text-muted">{{ result.submission.score }}/{{ stats.total_points }} pts</small>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3">
+                                {% if result.status == 'submitted' %}
+                                    <div class="d-flex flex-wrap">
+                                        {% for breakdown in result.question_breakdown %}
+                                            {% if breakdown.correct == True %}
+                                                <span class="question-indicator bg-success text-white" title="Question {{ loop.index }}: Correct">{{ loop.index }}</span>
+                                            {% elif breakdown.correct == False %}
+                                                <span class="question-indicator bg-danger text-white" title="Question {{ loop.index }}: Incorrect">{{ loop.index }}</span>
+                                            {% else %}
+                                                <span class="question-indicator bg-warning text-white" title="Question {{ loop.index }}: Pending Review">{{ loop.index }}</span>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3">
+                                {% if result.submitted_at %}
+                                    <div>{{ result.submitted_at.strftime('%b %d, %Y') }}</div>
+                                    <small class="text-muted">{{ result.submitted_at.strftime('%I:%M %p') }}</small>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3">
+                                {% if result.status == 'submitted' %}
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" onclick="viewSubmission({{ result.submission.id }})">
+                                            <i class="material-icons">visibility</i>
+                                        </button>
+                                        {% if result.submission.answers_json and 'essay' in result.submission.answers_json %}
+                                            <button class="btn btn-outline-warning" onclick="gradeEssay({{ result.submission.id }})">
+                                                <i class="material-icons">grade</i>
+                                            </button>
+                                        {% endif %}
+                                    </div>
+                                {% else %}
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="sendReminder({{ result.student.id }})">
+                                        <i class="material-icons">notifications</i>
+                                    </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Submission Detail Modal -->
+<div class="modal fade" id="submissionModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Submission Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="submissionDetails">
+                <!-- Submission details will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterResults(type) {
+    const rows = document.querySelectorAll('.student-row');
+    
+    rows.forEach(row => {
+        const status = row.dataset.status;
+        const percentage = parseFloat(row.dataset.percentage);
+        let show = true;
+        
+        switch(type) {
+            case 'submitted':
+                show = status === 'submitted';
+                break;
+            case 'not_submitted':
+                show = status === 'not_submitted';
+                break;
+            case 'high_scores':
+                show = status === 'submitted' && percentage >= 90;
+                break;
+            case 'low_scores':
+                show = status === 'submitted' && percentage < 70;
+                break;
+            case 'all':
+            default:
+                show = true;
+                break;
+        }
+        
+        row.style.display = show ? '' : 'none';
+    });
+}
+
+function viewSubmission(submissionId) {
+    // Load submission details into modal
+    fetch(`/api/submission/${submissionId}/details`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('submissionDetails').innerHTML = data.html;
+            new bootstrap.Modal(document.getElementById('submissionModal')).show();
+        })
+        .catch(error => {
+            console.error('Error loading submission:', error);
+        });
+}
+
+function gradeEssay(submissionId) {
+    window.location.href = `/grade_essay/${submissionId}`;
+}
+
+function sendReminder(studentId) {
+    if (confirm('Send a reminder to this student?')) {
+        fetch(`/api/student/${studentId}/remind`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Reminder sent successfully!');
+                } else {
+                    alert('Failed to send reminder.');
+                }
+            });
+    }
+}
+</script>
+{% endblock %}

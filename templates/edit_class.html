@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Edit Class{% endblock %}
+{% block content %}
+  <div class="card p-4">
+    <h2 class="fw-semibold mb-4">Edit Class</h2>
+    <form method="post">
+      <div class="mb-3">
+        <label for="subject" class="form-label">Subject</label>
+        <input type="text" class="form-control" id="subject" name="subject" value="{{ class_.subject }}" required>
+      </div>
+      <div class="mb-3">
+        <label for="class_code" class="form-label">Class Code</label>
+        <input type="text" class="form-control" id="class_code" name="class_code" value="{{ class_.class_code }}" readonly>
+      </div>
+      <button type="submit" class="btn btn-primary">Save Changes</button>
+      <a href="{{ url_for('index') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
+    </form>
+  </div>
+{% endblock %}

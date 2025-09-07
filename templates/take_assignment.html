@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}{{ assignment.title }} - Take assignment{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="text-center mb-4">
+      <h1 class="h3 mb-2">{{ assignment.title }}</h1>
+      <p class="text-muted">{{ assignment.class_.name }}</p>
+      {% if assignment.description %}
+      <div class="alert alert-info">{{ assignment.description }}</div>
+      {% endif %}
+    </div>
+
+    <form method="post" id="assignmentForm">
+      {% for question in questions %}
+      <div class="card mb-4">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-3">
+            <h5 class="card-title mb-0">Question {{ loop.index }}</h5>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge bg-secondary">{{ question.question_type.replace('_', ' ').title() }}</span>
+              <span class="badge bg-primary">{{ question.points }} point{{ 's' if question.points != 1 else '' }}</span>
+            </div>
+          </div>
+          
+          <p class="card-text mb-3">{{ question.question_text }}</p>
+          
+          {% if question.help_video_url %}
+          <div class="alert alert-light mb-3">
+            <div class="d-flex align-items-center">
+              <span class="material-icons text-primary me-2">play_circle</span>
+              <div>
+                <strong>Need help?</strong> 
+                <a href="{{ question.help_video_url }}" target="_blank" class="text-decoration-none">
+                  Watch this video guide
+                  <span class="material-icons align-middle ms-1" style="font-size: 16px;">open_in_new</span>
+                </a>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+          
+          {% if question.question_type == 'multiple_choice' %}
+            {% for option in question.options %}
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="radio" name="question_{{ question.id }}" 
+                     id="q{{ question.id }}_{{ loop.index }}" value="{{ option.option_text }}" required>
+              <label class="form-check-label" for="q{{ question.id }}_{{ loop.index }}">
+                {{ option.option_text }}
+              </label>
+            </div>
+            {% endfor %}
+            
+          {% elif question.question_type == 'identification' %}
+            <div class="mb-3">
+              <label class="form-label">Your answer:</label>
+              <input type="text" class="form-control" name="question_{{ question.id }}" 
+                     placeholder="Enter your answer" required>
+              <div class="form-text">Provide the correct identification or term</div>
+            </div>
+            
+          {% elif question.question_type == 'fill_in_the_blanks' %}
+            <div class="mb-3">
+              <label class="form-label">Fill in the blanks:</label>
+              <div class="fill-in-blanks-container">
+                <div class="question-display mb-3 p-3 bg-light rounded" id="question-display-{{ question.id }}">
+                  {{ question.question_text }}
+                </div>
+                <input type="hidden" name="question_{{ question.id }}" id="hidden-answer-{{ question.id }}">
+                <div class="form-text">Fill in each blank field above. Your answers will be automatically combined.</div>
+              </div>
+              <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                  const questionDisplay = document.getElementById('question-display-{{ question.id }}');
+                  const hiddenInput = document.getElementById('hidden-answer-{{ question.id }}');
+                  let questionText = questionDisplay.textContent;
+                  
+                  // Replace [BLANK] with input fields
+                  let blankCount = 0;
+                  questionText = questionText.replace(/\[BLANK\]/g, function() {
+                    blankCount++;
+                    return `<input type="text" class="form-control d-inline-block blank-input" style="width: 150px; margin: 0 5px;" placeholder="Answer ${blankCount}" data-blank="${blankCount}">`;
+                  });
+                  
+                  questionDisplay.innerHTML = questionText;
+                  
+                  // Update hidden field when any blank is filled
+                  function updateHiddenField() {
+                    const blankInputs = questionDisplay.querySelectorAll('.blank-input');
+                    const answers = Array.from(blankInputs).map(input => input.value);
+                    hiddenInput.value = answers.join('|');
+                  }
+                  
+                  // Add event listeners to all blank inputs
+                  questionDisplay.addEventListener('input', function(e) {
+                    if (e.target.classList.contains('blank-input')) {
+                      updateHiddenField();
+                    }
+                  });
+                });
+              </script>
+            </div>
+            
+          {% elif question.question_type == 'enumeration' %}
+            <div class="mb-3">
+              <label class="form-label">Your answer:</label>
+              <input type="text" class="form-control" name="question_{{ question.id }}" 
+                     placeholder="Enter your answer" required>
+              <div class="form-text">List all possible answers (case-insensitive)</div>
+            </div>
+            
+          {% elif question.question_type == 'problem_solving' %}
+            <div class="mb-3">
+              <label class="form-label">Your answer:</label>
+              <input type="text" class="form-control" name="question_{{ question.id }}" 
+                     placeholder="Enter your answer" required>
+            </div>
+            
+          {% elif question.question_type == 'essay' %}
+            <div class="mb-3">
+              <label class="form-label">Your essay:</label>
+              <textarea class="form-control" name="question_{{ question.id }}" rows="6" 
+                        placeholder="Write your essay here..." required></textarea>
+              <div class="form-text">This will be graded manually by your teacher</div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      
+      <div class="d-grid">
+        <button type="submit" class="btn btn-success btn-lg">Submit assignment</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('assignmentForm').onsubmit = function(e) {
+  return confirm('Are you sure you want to submit your assignment? You cannot change your answers after submission.');
+};
+</script>
+{% endblock %} 

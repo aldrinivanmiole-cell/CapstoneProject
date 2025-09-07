@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Sign in - Academic Dashboard{% endblock %}
+{% block content %}
+  <div class="text-center mb-4">
+    <h1 class="h3 mb-3 fw-normal">Academic Dashboard</h1>
+    <p class="text-muted">Sign in to continue to your classes</p>
+  </div>
+  
+  <form method="post" class="needs-validation" novalidate>
+    <div class="mb-3">
+      <label for="email" class="form-label">Email address</label>
+      <input type="email" class="form-control" id="email" name="email" required>
+    </div>
+    <div class="mb-4">
+      <label for="password" class="form-label">Password</label>
+      <input type="password" class="form-control" id="password" name="password" required>
+    </div>
+    <button class="w-100 btn btn-primary" type="submit">Sign in</button>
+    <p class="mt-4 mb-0 text-center">
+      Don't have an account? <a href="{{ url_for('register') }}" class="text-decoration-none" style="color: #1a73e8;">Create one</a>
+    </p>
+  </form>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+.form-control {
+  padding: 1rem 0.75rem;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  height: auto;
+}
+
+.form-control:focus {
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+}
+
+.form-label {
+  font-size: 0.875rem;
+  color: #5f6368;
+  margin-bottom: 0.5rem;
+}
+
+.btn-primary {
+  background-color: #1a73e8;
+  border-color: #1a73e8;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  border-radius: 4px;
+}
+
+.btn-primary:hover {
+  background-color: #1557b0;
+  border-color: #1557b0;
+}
+
+.alert {
+  border: none;
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  background-color: #fce8e6;
+  color: #d93025;
+}
+
+.alert::before {
+  content: 'error';
+  font-family: 'Material Icons';
+  margin-right: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.alert.alert-success {
+  background-color: #e6f4ea;
+  color: #1e8e3e;
+}
+
+.alert.alert-success::before {
+  content: 'check_circle';
+}
+
+.btn-close {
+  filter: none;
+  opacity: 0.87;
+  font-size: 0.75rem;
+}
+
+h1 {
+  color: #202124;
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.text-muted {
+  color: #5f6368 !important;
+  font-size: 0.875rem;
+}
+
+.was-validated .form-control:invalid {
+  border-color: #d93025;
+  background-image: none;
+}
+
+.was-validated .form-control:invalid:focus {
+  border-color: #d93025;
+  box-shadow: 0 0 0 2px rgba(217, 48, 37, 0.2);
+}
+
+.invalid-feedback {
+  color: #d93025;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}assignment Results - {{ assignment.title }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="text-center mb-4">
+      <h1 class="h3 mb-2">assignment Complete!</h1>
+      <p class="text-muted">{{ assignment.title }} • {{ assignment.class_.name }}</p>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-body text-center">
+        <h2 class="display-4 mb-3">{{ score }}/{{ total_points }}</h2>
+        <h4 class="mb-2">{{ student_name }}</h4>
+        <p class="text-muted">
+          {% set percentage = (score / total_points * 100) if total_points > 0 else 0 %}
+          Score: {{ "%.1f"|format(percentage) }}%
+        </p>
+        
+        {% if percentage >= 90 %}
+          <div class="alert alert-success">
+            <span class="material-icons me-2">emoji_events</span>
+            Excellent work!
+          </div>
+        {% elif percentage >= 80 %}
+          <div class="alert alert-info">
+            <span class="material-icons me-2">thumb_up</span>
+            Great job!
+          </div>
+        {% elif percentage >= 70 %}
+          <div class="alert alert-warning">
+            <span class="material-icons me-2">trending_up</span>
+            Good effort!
+          </div>
+        {% else %}
+          <div class="alert alert-secondary">
+            <span class="material-icons me-2">school</span>
+            Keep studying!
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <h5 class="mb-3">Answer Review</h5>
+    {% for question in assignment.questions %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <h6 class="card-title mb-0">Question {{ loop.index }}</h6>
+          <div class="d-flex align-items-center gap-2">
+            {% if question.id in answers %}
+              {% set answer_data = answers[question.id] %}
+              {% if answer_data.correct == True %}
+                <span class="badge bg-success">Correct</span>
+                <span class="badge bg-primary">{{ answer_data.points }}/{{ question.points }}</span>
+              {% elif answer_data.correct == False %}
+                <span class="badge bg-danger">Incorrect</span>
+                <span class="badge bg-primary">0/{{ question.points }}</span>
+              {% else %}
+                <span class="badge bg-warning">Pending Review</span>
+                <span class="badge bg-primary">-/{{ question.points }}</span>
+              {% endif %}
+            {% else %}
+              <span class="badge bg-secondary">Not Answered</span>
+            {% endif %}
+          </div>
+        </div>
+        
+        <p class="card-text">{{ question.question_text }}</p>
+        
+        {% if question.id in answers %}
+          {% set answer_data = answers[question.id] %}
+          <div class="mt-3">
+            <strong>Your answer:</strong> {{ answer_data.answer }}
+          </div>
+          
+          {% if question.question_type != 'essay' and answer_data.correct == False %}
+            <div class="mt-2">
+              <strong>Correct answer(s):</strong>
+              {% for correct in question.correct_answers %}
+                <span class="badge bg-success me-1">{{ correct.answer_text }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="text-muted mt-3">No answer provided</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    
+    <div class="text-center mt-4">
+      <a href="{{ url_for('take_assignment', assignment_id=assignment.id) }}" class="btn btn-outline-primary me-2">Take Again</a>
+      <button onclick="window.print()" class="btn btn-outline-secondary">Print Results</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+@media print {
+  .btn, .navbar, .sidebar-custom { display: none !important; }
+  .main-content-custom { margin: 0 !important; }
+}
+</style>
+{% endblock %} 
