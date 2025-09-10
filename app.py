@@ -297,6 +297,8 @@ def api_root():
     return {
         "message": "Classroom Game API is running",
         "status": "active",
+        "version": "2.0.0-fastapi-first",
+        "deployment_time": "2025-09-10T02:55:00Z",
         "endpoints": {
             "classes": "/classes",
             "assignments": "/class/{class_code}/assignments",
