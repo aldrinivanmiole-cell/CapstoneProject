@@ -6,10 +6,10 @@ using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using TMPro;
 
-public class RegisterManager : MonoBehaviour
+public class RegisterManagerSimple : MonoBehaviour
 {
     [Header("API Configuration")]
-    public string apiUrl = "https://capstoneproject-unity.onrender.com/student/register";
+    public string apiUrl = "https://capstoneproject-unity.onrender.com/api/student/register";
 
     [Header("Input Fields")]
     public TMP_InputField firstNameInput;
@@ -56,41 +56,41 @@ public class RegisterManager : MonoBehaviour
         // Start registration
         ShowMessage("Registering student...", true);
         submitButton.interactable = false;
-        StartCoroutine(RegisterStudent(firstName, lastName, email));
+        StartCoroutine(RegisterStudentSimple(firstName, lastName, email));
     }
 
-    IEnumerator RegisterStudent(string firstName, string lastName, string email)
+    IEnumerator RegisterStudentSimple(string firstName, string lastName, string email)
     {
-        // Prepare data for the API - use existing class for testing
+        // Prepare data for the API
         var studentData = new StudentRegistrationRequest
         {
             name = $"{firstName} {lastName}",
             email = email,
-            password = passwordInput.text,  // Include password
-            class_code = "2EK5QUY",  // Use existing class code for testing
+            class_code = "2EK5QUY",
             device_id = SystemInfo.deviceUniqueIdentifier,
             grade_level = "Grade 1",
             avatar_url = ""
         };
 
         string jsonData = JsonUtility.ToJson(studentData);
-        Debug.Log($"Sending registration data: {jsonData}");
+        Debug.Log($"Sending data: {jsonData}");
 
-        // Create POST request
+        // Use the same method that worked in NetworkTest
         using (UnityWebRequest request = new UnityWebRequest(apiUrl, "POST"))
         {
             // Convert JSON string to bytes
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonData);
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
-
+            
             // Set headers
             request.SetRequestHeader("Content-Type", "application/json");
             request.SetRequestHeader("Accept", "application/json");
-
+            
             request.timeout = 30;
-
+            
             Debug.Log($"Sending POST request to: {apiUrl}");
+            Debug.Log($"JSON payload: {jsonData}");
 
             yield return request.SendWebRequest();
 
@@ -106,10 +106,9 @@ public class RegisterManager : MonoBehaviour
                 try
                 {
                     var response = JsonUtility.FromJson<StudentRegistrationReply>(request.downloadHandler.text);
-
+                    
                     if (response.status == "success")
                     {
-                        // Save student data to PlayerPrefs
                         PlayerPrefs.SetInt("StudentID", response.student_id);
                         PlayerPrefs.SetString("StudentName", response.student_name);
                         PlayerPrefs.SetInt("TotalPoints", response.total_points);
@@ -117,11 +116,8 @@ public class RegisterManager : MonoBehaviour
 
                         ShowMessage($"Registration successful! Welcome {response.student_name}!", true);
                         ClearForm();
-
-                        Debug.Log($"Registration Success: ID={response.student_id}, Name={response.student_name}");
-
-                        // Optionally redirect to dashboard after successful registration
-                        // SceneManager.LoadScene("dashboard");
+                        
+                        Debug.Log($"Success: ID={response.student_id}, Name={response.student_name}");
                     }
                     else
                     {
@@ -131,8 +127,8 @@ public class RegisterManager : MonoBehaviour
                 }
                 catch (Exception e)
                 {
-                    ShowMessage("Error processing server response.", false);
-                    Debug.LogError($"JSON parsing error: {e.Message}");
+                    ShowMessage("Error processing response.", false);
+                    Debug.LogError($"JSON error: {e.Message}");
                     Debug.LogError($"Raw response: {request.downloadHandler.text}");
                 }
             }
@@ -172,7 +168,6 @@ public class StudentRegistrationRequest
 {
     public string name;
     public string email;
-    public string password;  // Added password field
     public string class_code;
     public string device_id;
     public string grade_level;

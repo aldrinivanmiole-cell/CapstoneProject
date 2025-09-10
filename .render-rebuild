@@ -1,0 +1,6 @@
+# Force Render Rebuild
+# This file forces Render to rebuild and deploy the FastAPI-first architecture
+# Date: 2025-09-10
+# Issue: Render not deploying new uvicorn-based configuration
+
+echo "FastAPI deployment forced rebuild"

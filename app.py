@@ -1,59 +1,29 @@
-# ==================== IMPORTS ====================
-# Flask imports
+# Flask + FastAPI Combined Application
 from flask import Flask, render_template, request, redirect, url_for, session, flash, make_response, send_file
-
-# FastAPI imports
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.middleware.wsgi import WSGIMiddleware
 import uvicorn
-
-# Database imports
 from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, inspect, Boolean, DateTime
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import SQLAlchemyError
-
-# Utility imports
-import os
-import re
-import json
-import random
-import string
-import threading
-import uuid
+import os, re, json, random, string, threading, io
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-import io
-
-# ==================== DATABASE CONFIGURATION ====================
-# Database setup and configuration
+from functools import wraps
+# Database setup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(BASE_DIR, "school.db")
 DATABASE_URL = f"sqlite:///{db_path}"
-
-# Create database directory if it doesn't exist
 os.makedirs(BASE_DIR, exist_ok=True)
-
-# Database engine configuration with thread safety for Flask/FastAPI
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False}  # Required for SQLite
-)
-
-# Create session factory
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Create base class for declarative models
 Base = declarative_base()
 
-# ==================== HELPER FUNCTIONS ====================
-# Database session context manager for FastAPI
-from functools import wraps
-
+# Helper functions
 def with_db_session(func):
-    """Decorator to handle database sessions automatically"""
     @wraps(func)
     def wrapper(*args, **kwargs):
         db = SessionLocal()
@@ -67,7 +37,6 @@ def with_db_session(func):
     return wrapper
 
 def get_db():
-    """Database session context manager for cleaner code"""
     db = SessionLocal()
     try:
         yield db
@@ -77,33 +46,25 @@ def get_db():
     finally:
         db.close()
 
-# Common error handlers
 def handle_db_error(e, error_msg="Database error occurred"):
-    """Handle database errors consistently"""
     print(f"Database error: {str(e)}")
     raise HTTPException(status_code=500, detail=f"{error_msg}: {str(e)}")
 
 def handle_not_found(item_name="Item"):
-    """Handle not found errors consistently"""
     raise HTTPException(status_code=404, detail=f"{item_name} not found")
 
-# Authentication helper for Flask routes
 def require_login():
-    """Check if user is logged in (Flask routes)"""
     if "teacher_id" not in session:
         return redirect(url_for("login"))
     return None
 
-# Response formatters
 def success_response(data, message="Success"):
-    """Standard success response format"""
     return {"status": "success", "message": message, "data": data}
 
 def error_response(message, status_code=400):
-    """Standard error response format"""
     raise HTTPException(status_code=status_code, detail=message)
 
-# ==================== DATABASE MODELS ====================
+# Database Models
 class Teacher(Base):
     __tablename__ = "teachers"
     id = Column(Integer, primary_key=True)
@@ -190,11 +151,9 @@ class Student(Base):
     enrollments = relationship("Enrollment", back_populates="student", cascade="all, delete-orphan")
 
     def set_password(self, password):
-        """Set password hash"""
         self.password_hash = generate_password_hash(password)
     
     def check_password(self, password):
-        """Check password against hash"""
         return check_password_hash(self.password_hash, password)
 
 class Enrollment(Base):
@@ -264,36 +223,15 @@ else:
     print("Failed to initialize database")
     exit(1)
 
-# Flask app setup
-
-# ==================== APP INITIALIZATION ====================
-
-# Flask app for web dashboard (Teachers)
+# App Initialization
 app = Flask(__name__)
-app.secret_key = 'dev-secret-key-replace-in-production'  # Replace with secure key in production
+app.secret_key = 'dev-secret-key-replace-in-production'
+api = FastAPI(title="Classroom Game API", description="API for Unity turn-based game", version="1.0.0")
+api.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-# FastAPI app for Unity/Android Game API
-api = FastAPI(
-    title="Classroom Game API", 
-    description="API for Unity turn-based game to communicate with classroom system",
-    version="1.0.0"
-)
-
-# CORS middleware for FastAPI (allows Unity/Android to connect)
-api.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your game's domain
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ==================== FASTAPI ENDPOINTS FOR UNITY/ANDROID ====================
-# API endpoints for Unity game and Android app communication
-
+# FastAPI Endpoints (Unity/Android)
 @api.get("/", summary="API Health Check")
 def api_root():
-    """Root endpoint to verify API is running"""
     return {
         "message": "Classroom Game API is running",
         "status": "active",
@@ -313,7 +251,6 @@ def api_root():
 @api.get("/classes", summary="Get All Classes")
 @with_db_session
 def get_all_classes(db):
-    """Get all available classes for students to join"""
     try:
         classes = db.query(Class).all()
         return success_response([
@@ -331,7 +268,6 @@ def get_all_classes(db):
 @api.get("/class/{class_code}/assignments", summary="Get Assignments by Class Code")
 @with_db_session
 def get_assignments_by_code(db, class_code: str):
-    """Get all assignments for a class using class code (easier for students)"""
     try:
         class_ = db.query(Class).filter_by(class_code=class_code).first()
         if not class_:
@@ -361,7 +297,7 @@ def get_assignments_by_code(db, class_code: str):
 
 @api.get("/assignment/{assignment_id}", summary="Get Assignment Questions")
 def get_assignment_for_game(assignment_id: int):
-    """Get assignment with questions formatted for Unity game"""
+
     db = SessionLocal()
     try:
         assignment = db.query(Assignment).filter_by(id=assignment_id).first()
@@ -431,7 +367,7 @@ def get_assignment_for_game(assignment_id: int):
 
 @api.post("/student/register", summary="Register Student for Mobile Game")
 def register_student_for_game(student_data: dict):
-    """Register a new student from the Unity mobile game"""
+
     db = SessionLocal()
     try:
         name = student_data.get("name", "").strip()
@@ -515,7 +451,7 @@ def register_student_for_game(student_data: dict):
 
 @api.post("/student/simple-register", summary="Simple Student Registration (No Class)")
 def simple_register_student(student_data: dict):
-    """Register a new student without class enrollment"""
+
     db = SessionLocal()
     try:
         name = student_data.get("name", "").strip()
@@ -564,7 +500,7 @@ def simple_register_student(student_data: dict):
 
 @api.post("/student/login", summary="Student Login")
 def login_student(login_data: dict):
-    """Student login with email and password"""
+
     db = SessionLocal()
     try:
         email = login_data.get("email", "").strip()
@@ -627,7 +563,7 @@ def login_student(login_data: dict):
 
 @api.post("/student/join-class", summary="Join Class with Code")
 def join_class_with_code(join_data: dict):
-    """Allow student to join a class using class code"""
+
     db = SessionLocal()
     try:
         student_id = join_data.get("student_id")
@@ -678,7 +614,7 @@ def join_class_with_code(join_data: dict):
 
 @api.post("/submit/{assignment_id}", summary="Submit Assignment Answers")
 def submit_assignment_from_game(assignment_id: int, submission_data: dict):
-    """Submit assignment answers from Unity game"""
+
     db = SessionLocal()
     try:
         student_id = submission_data.get("student_id")
@@ -797,7 +733,7 @@ def submit_assignment_from_game(assignment_id: int, submission_data: dict):
 
 @api.get("/leaderboard/{class_code}", summary="Get Class Leaderboard")
 def get_class_leaderboard(class_code: str):
-    """Get leaderboard for turn-based game competition"""
+
     db = SessionLocal()
     try:
         class_ = db.query(Class).filter_by(class_code=class_code).first()
@@ -861,7 +797,7 @@ def get_class_leaderboard(class_code: str):
 
 @api.get("/student/{student_id}/profile", summary="Get Student Profile for Mobile")
 def get_student_profile(student_id: int):
-    """Get student profile data for Unity mobile game"""
+
     db = SessionLocal()
     try:
         student = db.query(Student).filter_by(id=student_id).first()
@@ -916,7 +852,7 @@ def get_student_profile(student_id: int):
 
 @api.put("/student/{student_id}/avatar", summary="Update Student Avatar")
 def update_student_avatar(student_id: int, avatar_data: dict):
-    """Update student avatar URL from mobile game"""
+
     db = SessionLocal()
     try:
         student = db.query(Student).filter_by(id=student_id).first()
@@ -944,10 +880,8 @@ def update_student_avatar(student_id: int, avatar_data: dict):
     finally:
         db.close()
 
-# ==================== UTILITY FUNCTIONS ====================
-
+# Utility Functions
 def generate_class_code(length=7):
-    """Generate unique class code"""
     while True:
         code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
         db = SessionLocal()
@@ -958,8 +892,7 @@ def generate_class_code(length=7):
         finally:
             db.close()
 
-# ==================== FLASK ROUTES FOR TEACHERS ====================
-# Web routes for teacher dashboard and classroom management
+# Flask Routes (Teacher Dashboard)
 
 @app.route("/")
 def index():
@@ -1122,7 +1055,7 @@ def create_class():
 
 @app.route("/create_assignment/<int:class_id>", methods=["GET", "POST"])
 def create_assignment(class_id):
-    """Dynamic quiz builder similar to Google Forms."""
+
     if "teacher_id" not in session:
         return redirect(url_for("login"))
 
@@ -1217,7 +1150,7 @@ def create_assignment(class_id):
 
 @app.route("/view_assignment/<int:assignment_id>")
 def view_assignment(assignment_id):
-    """View quiz details with all questions."""
+
     if "teacher_id" not in session:
         return redirect(url_for("login"))
     
@@ -1250,7 +1183,7 @@ def view_assignment(assignment_id):
 
 @app.route("/edit_assignment/<int:assignment_id>", methods=["GET", "POST"])
 def edit_assignment(assignment_id):
-    """Edit existing assignment."""
+
     if "teacher_id" not in session:
         return redirect(url_for("login"))
 
@@ -1377,7 +1310,7 @@ def edit_assignment(assignment_id):
 
 @app.route("/delete_assignment/<int:assignment_id>")
 def delete_assignment(assignment_id):
-    """Delete assignment."""
+
     if "teacher_id" not in session:
         return redirect(url_for("login"))
 
@@ -1398,7 +1331,7 @@ def delete_assignment(assignment_id):
 
 @app.route("/take_assignment/<int:assignment_id>", methods=["GET", "POST"])
 def take_assignment(assignment_id):
-    """Student interface to take assignment."""
+
     # Assume student_id is stored in session (from mobile game or web login)
     student_id = session.get("student_id")
     if not student_id:
@@ -1601,7 +1534,7 @@ def class_info(class_id):
 
 @app.route("/assignment/<int:assignment_id>/monitor")
 def assignment_monitor(assignment_id):
-    """Google Classroom style assignment monitoring page"""
+
     if "teacher_id" not in session:
         return redirect(url_for("login"))
     
@@ -1708,121 +1641,11 @@ def assignment_results(assignment_id):
     finally:
         db.close()
 
-# JMeter Test Endpoints (GET only)
-@app.route("/test/register")
-def test_register_get():
-    """GET endpoint for JMeter testing - creates a test teacher"""
-    import uuid
-    test_id = str(uuid.uuid4())[:8]
-    
-    db = SessionLocal()
-    try:
-        new_teacher = Teacher(
-            first_name=f"Test_{test_id}",
-            last_name="Teacher",
-            email=f"test_{test_id}@example.com"
-        )
-        new_teacher.set_password("password123")
-        
-        db.add(new_teacher)
-        db.commit()
-        
-        return {
-            "status": "success", 
-            "message": f"Test teacher created",
-            "email": f"test_{test_id}@example.com",
-            "password": "password123"
-        }
-    except Exception as e:
-        db.rollback()
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
-@app.route("/test/login")
-def test_login_get():
-    """GET endpoint for JMeter testing - simulates login check"""
-    db = SessionLocal()
-    try:
-        teacher_count = db.query(Teacher).count()
-        if teacher_count > 0:
-            latest_teacher = db.query(Teacher).order_by(Teacher.created_at.desc()).first()
-            return {
-                "status": "success", 
-                "message": "Login test successful",
-                "teacher_count": teacher_count,
-                "latest_teacher": latest_teacher.email
-            }
-        else:
-            return {"status": "error", "message": "No teachers found"}
-    finally:
-        db.close()
-
-@app.route("/test/create_class")
-def test_create_class_get():
-    """GET endpoint for JMeter testing - creates a test class"""
-    db = SessionLocal()
-    try:
-        # Get the latest teacher
-        teacher = db.query(Teacher).order_by(Teacher.created_at.desc()).first()
-        if not teacher:
-            return {"status": "error", "message": "No teacher found"}
-        
-        import uuid
-        test_id = str(uuid.uuid4())[:6]
-        
-        new_class = Class(
-            name=f"Test Class {test_id}",
-            section="A",
-            class_code=generate_class_code(),
-            teacher_id=teacher.id
-        )
-        db.add(new_class)
-        db.commit()
-        
-        return {
-            "status": "success",
-            "message": "Test class created",
-            "class_name": new_class.name,
-            "class_code": new_class.class_code,
-            "teacher": teacher.email
-        }
-    except Exception as e:
-        db.rollback()
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
-@app.route("/test/status")
-def test_status():
-    """GET endpoint to check system status"""
-    db = SessionLocal()
-    try:
-        teacher_count = db.query(Teacher).count()
-        class_count = db.query(Class).count()
-        quiz_count = db.query(Assignment).count()
-        
-        return {
-            "status": "success",
-            "database": "connected",
-            "teachers": teacher_count,
-            "classes": class_count,
-            "quizzes": quiz_count,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
-
-# ==================== SERVER STARTUP ====================
+# Server Startup
 
 # Combined ASGI application for production
-from fastapi.middleware.wsgi import WSGIMiddleware
-
 def create_combined_app():
-    """Create a combined FastAPI + Flask application for production"""
+
     # FastAPI is the main app
     main_app = api  # Use our existing FastAPI app
     
@@ -1835,13 +1658,13 @@ def create_combined_app():
 combined_app = create_combined_app()
 
 def run_flask():
-    """Run Flask web dashboard for teachers"""
+
     port = int(os.environ.get("PORT", 5000))
     print(f"🌐 Starting Flask Web Dashboard on http://localhost:{port}")
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 def run_fastapi():
-    """Run FastAPI for Unity/Android game"""
+
     port = int(os.environ.get("PORT", 8001))
     print(f"🎮 Starting FastAPI Game API on http://localhost:{port}")
     print(f"📚 API Documentation available at http://localhost:{port}/docs")
