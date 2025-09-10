@@ -80,7 +80,8 @@ public class GameStageManager : MonoBehaviour
     public TMP_Text dialogueText;
 
     [Header("Flask Integration")]
-    public string flaskURL = "http://127.0.0.1:5000";
+    public string flaskURL = "https://capstoneproject-jq2h.onrender.com"; // Production Flask server URL
+    // For local development, change to: "http://127.0.0.1:5000"
     public bool sendToFlask = true;
     public int studentId = 1;
     public int assignmentId = 1;

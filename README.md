@@ -163,6 +163,29 @@ For issues or questions:
 2. View `/debug/info` for system information
 3. Check Render logs for error details
 
+## 🚀 Quick Deployment Guide
+
+### 1. Deploy to Render
+- Go to [Render Dashboard](https://dashboard.render.com/)
+- Create new Web Service from GitHub repo
+- Use build command: `pip install -r requirements.txt`
+- Use start command: `gunicorn wsgi:app`
+
+### 2. Update Unity Scripts
+After deployment, replace `"https://your-app-name.onrender.com"` with your actual Render URL in these files:
+- BaseGameManager_ClassroomCode.cs (serverURL)
+- ClassCodeGate_Enhanced.cs (serverURL)
+- DraggableAnswer.cs (flaskURL)
+- FillBlankDropZone.cs (flaskServerUrl)
+- All other Unity scripts with flaskURL
+
+### 3. Test in MuMu Player
+- Build Unity APK with production URLs
+- Install in MuMu Player emulator
+- Test complete student workflow
+
+📖 **For detailed deployment instructions, see [DEPLOYMENT_INSTRUCTIONS.md](DEPLOYMENT_INSTRUCTIONS.md)**
+
 ## License
 
 This project is licensed under the MIT License.

@@ -80,7 +80,8 @@ public abstract class BaseGameManager : MonoBehaviour
     [Header("Classroom Integration")]
     public bool enableClassroomMode = true;
     public int assignmentId = -1; // Set this to load specific assignment
-    public string serverURL = "http://127.0.0.1:5000"; // Your Flask server URL
+    public string serverURL = "https://capstoneproject-jq2h.onrender.com"; // Production Flask server URL
+    // For local development, change to: "http://127.0.0.1:5000"
     public TMP_Text studentNameText;
     public TMP_Text assignmentInfoText;
     public TMP_Text classroomStatusText;

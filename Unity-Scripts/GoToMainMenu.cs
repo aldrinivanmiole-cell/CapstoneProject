@@ -9,7 +9,8 @@ public class GoToMainMenu : MonoBehaviour
     public string mainMenuSceneName = "MainMenu";
 
     [Header("Web App Connection")]
-    public string flaskURL = "http://127.0.0.1:5000";
+    public string flaskURL = "https://capstoneproject-jq2h.onrender.com"; // Production Flask server URL
+    // For local development, change to: "http://127.0.0.1:5000"
     public int studentId = 1;
 
     void Start()

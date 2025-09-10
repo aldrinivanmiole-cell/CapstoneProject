@@ -24,7 +24,8 @@ public class ClassCodeGate : MonoBehaviour
 
     [Header("Classroom Integration")]
     public bool enableClassroomMode = true;
-    public string serverURL = "http://127.0.0.1:5000"; // Your Flask server URL
+    public string serverURL = "https://capstoneproject-jq2h.onrender.com"; // Production Flask server URL
+    // For local development, change to: "http://127.0.0.1:5000"
 
     private const string CLASS_CODE_KEY = "ClassCodeEntered";
 

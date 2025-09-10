@@ -6,6 +6,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.middleware.wsgi import WSGIMiddleware
 import uvicorn
 
 # Database imports
@@ -21,6 +22,7 @@ import json
 import random
 import string
 import threading
+import uuid
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 import io
@@ -272,7 +274,7 @@ app.secret_key = 'dev-secret-key-replace-in-production'  # Replace with secure k
 
 # FastAPI app for Unity/Android Game API
 api = FastAPI(
-    title="Classroom Game API",
+    title="Classroom Game API", 
     description="API for Unity turn-based game to communicate with classroom system",
     version="1.0.0"
 )
@@ -296,16 +298,17 @@ def api_root():
         "message": "Classroom Game API is running",
         "status": "active",
         "endpoints": {
-            "classes": "/api/classes",
-            "assignments": "/api/assignments/{class_id}",
-            "assignment_detail": "/api/assignment/{assignment_id}",
-            "submit": "/api/submit/{assignment_id}",
-            "student_register": "/api/student/register",
-            "leaderboard": "/api/leaderboard/{class_id}"
+            "classes": "/classes",
+            "assignments": "/class/{class_code}/assignments",
+            "assignment_detail": "/assignment/{assignment_id}",
+            "submit": "/submit/{assignment_id}",
+            "student_register": "/student/register",
+            "student_login": "/student/login",
+            "leaderboard": "/leaderboard/{class_code}"
         }
     }
 
-@api.get("/api/classes", summary="Get All Classes")
+@api.get("/classes", summary="Get All Classes")
 @with_db_session
 def get_all_classes(db):
     """Get all available classes for students to join"""
@@ -323,7 +326,7 @@ def get_all_classes(db):
     except Exception as e:
         handle_db_error(e)
 
-@api.get("/api/class/{class_code}/assignments", summary="Get Assignments by Class Code")
+@api.get("/class/{class_code}/assignments", summary="Get Assignments by Class Code")
 @with_db_session
 def get_assignments_by_code(db, class_code: str):
     """Get all assignments for a class using class code (easier for students)"""
@@ -354,7 +357,7 @@ def get_assignments_by_code(db, class_code: str):
     except Exception as e:
         handle_db_error(e)
 
-@api.get("/api/assignment/{assignment_id}", summary="Get Assignment Questions")
+@api.get("/assignment/{assignment_id}", summary="Get Assignment Questions")
 def get_assignment_for_game(assignment_id: int):
     """Get assignment with questions formatted for Unity game"""
     db = SessionLocal()
@@ -424,7 +427,7 @@ def get_assignment_for_game(assignment_id: int):
     finally:
         db.close()
 
-@api.post("/api/student/register", summary="Register Student for Mobile Game")
+@api.post("/student/register", summary="Register Student for Mobile Game")
 def register_student_for_game(student_data: dict):
     """Register a new student from the Unity mobile game"""
     db = SessionLocal()
@@ -508,7 +511,7 @@ def register_student_for_game(student_data: dict):
     finally:
         db.close()
 
-@api.post("/api/student/simple-register", summary="Simple Student Registration (No Class)")
+@api.post("/student/simple-register", summary="Simple Student Registration (No Class)")
 def simple_register_student(student_data: dict):
     """Register a new student without class enrollment"""
     db = SessionLocal()
@@ -557,7 +560,7 @@ def simple_register_student(student_data: dict):
     finally:
         db.close()
 
-@api.post("/api/student/login", summary="Student Login")
+@api.post("/student/login", summary="Student Login")
 def login_student(login_data: dict):
     """Student login with email and password"""
     db = SessionLocal()
@@ -620,7 +623,7 @@ def login_student(login_data: dict):
     finally:
         db.close()
 
-@api.post("/api/student/join-class", summary="Join Class with Code")
+@api.post("/student/join-class", summary="Join Class with Code")
 def join_class_with_code(join_data: dict):
     """Allow student to join a class using class code"""
     db = SessionLocal()
@@ -671,7 +674,7 @@ def join_class_with_code(join_data: dict):
     finally:
         db.close()
 
-@api.post("/api/submit/{assignment_id}", summary="Submit Assignment Answers")
+@api.post("/submit/{assignment_id}", summary="Submit Assignment Answers")
 def submit_assignment_from_game(assignment_id: int, submission_data: dict):
     """Submit assignment answers from Unity game"""
     db = SessionLocal()
@@ -790,7 +793,7 @@ def submit_assignment_from_game(assignment_id: int, submission_data: dict):
     finally:
         db.close()
 
-@api.get("/api/leaderboard/{class_code}", summary="Get Class Leaderboard")
+@api.get("/leaderboard/{class_code}", summary="Get Class Leaderboard")
 def get_class_leaderboard(class_code: str):
     """Get leaderboard for turn-based game competition"""
     db = SessionLocal()
@@ -854,7 +857,7 @@ def get_class_leaderboard(class_code: str):
     finally:
         db.close()
 
-@api.get("/api/student/{student_id}/profile", summary="Get Student Profile for Mobile")
+@api.get("/student/{student_id}/profile", summary="Get Student Profile for Mobile")
 def get_student_profile(student_id: int):
     """Get student profile data for Unity mobile game"""
     db = SessionLocal()
@@ -909,7 +912,7 @@ def get_student_profile(student_id: int):
     finally:
         db.close()
 
-@api.put("/api/student/{student_id}/avatar", summary="Update Student Avatar")
+@api.put("/student/{student_id}/avatar", summary="Update Student Avatar")
 def update_student_avatar(student_id: int, avatar_data: dict):
     """Update student avatar URL from mobile game"""
     db = SessionLocal()
@@ -1811,97 +1814,36 @@ def test_status():
         db.close()
 
 
-# ==================== UNITY API ENDPOINTS (FLASK) ====================
-@app.route("/api/student/register", methods=["POST"])
-def api_register_student():
-    """Flask endpoint for Unity game student registration"""
-    db = SessionLocal()
-    try:
-        # Get JSON data from request
-        student_data = request.get_json()
-        if not student_data:
-            return {"status": "error", "message": "No data provided"}, 400
-        
-        name = student_data.get("name", "").strip()
-        email = student_data.get("email", "").strip()
-        class_code = student_data.get("class_code", "").strip()
-        device_id = student_data.get("device_id", "").strip()
-        grade_level = student_data.get("grade_level", "").strip()
-        avatar_url = student_data.get("avatar_url", "").strip()
-        
-        if not all([name, email, class_code]):
-            return {"status": "error", "message": "Name, email, and class code are required"}, 400
-        
-        # Check if class exists
-        class_ = db.query(Class).filter_by(class_code=class_code).first()
-        if not class_:
-            return {"status": "error", "message": "Invalid class code"}, 404
-        
-        # Check if student already exists
-        existing_student = db.query(Student).filter_by(email=email).first()
-        if existing_student:
-            # Update device_id and last_active for existing student
-            existing_student.device_id = device_id
-            existing_student.last_active = datetime.utcnow()
-            if grade_level:
-                existing_student.grade_level = grade_level
-            if avatar_url:
-                existing_student.avatar_url = avatar_url
-                
-            # Check if already enrolled
-            existing_enrollment = db.query(Enrollment).filter_by(
-                student_id=existing_student.id, class_id=class_.id
-            ).first()
-            if not existing_enrollment:
-                # Enroll existing student in new class
-                enrollment = Enrollment(student_id=existing_student.id, class_id=class_.id)
-                db.add(enrollment)
-            
-            db.commit()
-            return {
-                "status": "success",
-                "student_id": existing_student.id,
-                "student_name": existing_student.name,
-                "class_name": class_.name,
-                "total_points": existing_student.total_points,
-                "message": "Student enrolled successfully"
-            }
-        
-        # Create new student
-        new_student = Student(
-            name=name, 
-            email=email,
-            device_id=device_id,
-            grade_level=grade_level,
-            avatar_url=avatar_url,
-            total_points=0,
-            last_active=datetime.utcnow()
-        )
-        db.add(new_student)
-        db.flush()  # Get student ID
-        
-        # Enroll in class
-        enrollment = Enrollment(student_id=new_student.id, class_id=class_.id)
-        db.add(enrollment)
-        db.commit()
-        
-        return {
-            "status": "success",
-            "student_id": new_student.id,
-            "student_name": new_student.name,
-            "class_name": class_.name,
-            "total_points": new_student.total_points,
-            "message": "Registration successful"
-        }
-        
-    except Exception as e:
-        db.rollback()
-        return {"status": "error", "message": str(e)}, 500
-    finally:
-        db.close()
-
-
 # ==================== SERVER STARTUP ====================
+
+# Combined ASGI application for production
+from fastapi.middleware.wsgi import WSGIMiddleware
+
+def create_combined_app():
+    """Create a combined FastAPI + Flask application for production"""
+    # Create FastAPI app with Flask mounted
+    combined_app = FastAPI(
+        title="Classroom Management System",
+        description="Combined API and Web Dashboard",
+        version="1.0.0"
+    )
+    
+    # Add CORS for Unity/Android
+    combined_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
+    # Mount all API endpoints
+    combined_app.mount("/api", api)
+    
+    # Mount Flask for web dashboard  
+    combined_app.mount("/", WSGIMiddleware(app))
+    
+    return combined_app
 
 def run_flask():
     """Run Flask web dashboard for teachers"""
@@ -1931,8 +1873,9 @@ if __name__ == "__main__":
         print(f"📖 API Docs: /docs")
         print("="*60 + "\n")
         
-        # Run Flask (which includes FastAPI endpoints)
-        app.run(host="0.0.0.0", port=port, debug=False)
+        # Create and run combined application
+        combined_app = create_combined_app()
+        uvicorn.run(combined_app, host="0.0.0.0", port=port, log_level="info")
     else:
         print("� Running in development mode")
         print("�📋 Teachers: Use web dashboard at http://localhost:5000")

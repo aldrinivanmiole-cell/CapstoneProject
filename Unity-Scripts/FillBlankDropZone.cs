@@ -15,7 +15,8 @@ public class FillBlankDropZone : MonoBehaviour, IDropHandler, IPointerEnterHandl
     public Vector2 buttonSpacing = new Vector2(120f, 0f);
 
     [Header("Flask Integration")]
-    public string flaskServerUrl = "http://127.0.0.1:5000";
+    public string flaskServerUrl = "https://capstoneproject-jq2h.onrender.com"; // Production Flask server URL
+    // For local development, change to: "http://127.0.0.1:5000"
     public bool sendToFlask = true;
 
     [Header("Visual Feedback")]
