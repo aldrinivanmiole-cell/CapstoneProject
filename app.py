@@ -1821,29 +1821,13 @@ from fastapi.middleware.wsgi import WSGIMiddleware
 
 def create_combined_app():
     """Create a combined FastAPI + Flask application for production"""
-    # Create FastAPI app with Flask mounted
-    combined_app = FastAPI(
-        title="Classroom Management System",
-        description="Combined API and Web Dashboard",
-        version="1.0.0"
-    )
+    # FastAPI is the main app
+    main_app = api  # Use our existing FastAPI app
     
-    # Add CORS for Unity/Android
-    combined_app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # Mount Flask for web dashboard at a sub-path 
+    main_app.mount("/dashboard", WSGIMiddleware(app))
     
-    # Mount all API endpoints
-    combined_app.mount("/api", api)
-    
-    # Mount Flask for web dashboard  
-    combined_app.mount("/", WSGIMiddleware(app))
-    
-    return combined_app
+    return main_app
 
 def run_flask():
     """Run Flask web dashboard for teachers"""
@@ -1865,11 +1849,11 @@ if __name__ == "__main__":
     
     # Check if running in production (Render sets this environment variable)
     if os.environ.get("RENDER") or os.environ.get("PORT"):
-        print("🚀 Running in production mode")
+        print("🚀 Running in production mode (FastAPI main)")
         # In production, run combined server
         port = int(os.environ.get("PORT", 10000))
-        print(f"📋 Web Dashboard: Available on assigned port")
-        print(f"🎮 Unity API: Same server, use /api/ endpoints")
+        print(f"🎮 Unity API: Available at root /")
+        print(f"📋 Web Dashboard: Available at /dashboard/")
         print(f"📖 API Docs: /docs")
         print("="*60 + "\n")
         

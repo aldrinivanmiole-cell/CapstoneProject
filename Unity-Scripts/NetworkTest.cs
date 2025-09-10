@@ -84,7 +84,7 @@ public class NetworkTest : MonoBehaviour
 
         // Test 4: Your Render API endpoint
         resultText.text += "4. Testing your API endpoint...\n";
-        using (UnityWebRequest request = UnityWebRequest.Get("https://capstoneproject-unity.onrender.com/api/student/register"))
+        using (UnityWebRequest request = UnityWebRequest.Get("https://capstoneproject-unity.onrender.com/student/register"))
         {
             request.timeout = 15;
             yield return request.SendWebRequest();
@@ -134,7 +134,7 @@ public class NetworkTest : MonoBehaviour
         // Test 6: POST request to your Render server
         resultText.text += "6. Testing POST to your Render server...\n";
         string studentJson = "{\"name\":\"Test User\",\"email\":\"test@test.com\",\"class_code\":\"2EK5QUY\",\"device_id\":\"test123\",\"grade_level\":\"Grade 1\",\"avatar_url\":\"\"}";
-        using (UnityWebRequest request = new UnityWebRequest("https://capstoneproject-unity.onrender.com/api/student/register", "POST"))
+        using (UnityWebRequest request = new UnityWebRequest("https://capstoneproject-unity.onrender.com/student/register", "POST"))
         {
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(studentJson);
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);

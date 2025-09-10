@@ -9,7 +9,7 @@ using TMPro;
 public class RegisterManager : MonoBehaviour
 {
     [Header("API Configuration")]
-    public string apiUrl = "https://capstoneproject-unity.onrender.com/api/student/register";
+    public string apiUrl = "https://capstoneproject-unity.onrender.com/student/register";
 
     [Header("Input Fields")]
     public TMP_InputField firstNameInput;
