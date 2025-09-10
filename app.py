@@ -1831,6 +1831,9 @@ def create_combined_app():
     
     return main_app
 
+# Create the combined app instance for production deployment
+combined_app = create_combined_app()
+
 def run_flask():
     """Run Flask web dashboard for teachers"""
     port = int(os.environ.get("PORT", 5000))
