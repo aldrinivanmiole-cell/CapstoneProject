@@ -9,7 +9,7 @@ using TMPro;
 public class RegisterManager : MonoBehaviour
 {
     [Header("API Configuration")]
-    public string apiUrl = "https://capstoneproject-unity.onrender.com/student/register";
+    public string apiUrl = "https://academyquest-w5j5.onrender.com/student/simple-register";
 
     [Header("Input Fields")]
     public TMP_InputField firstNameInput;
@@ -61,13 +61,12 @@ public class RegisterManager : MonoBehaviour
 
     IEnumerator RegisterStudent(string firstName, string lastName, string email)
     {
-        // Prepare data for the API - use existing class for testing
+        // Prepare data for simple registration (no class enrollment)
         var studentData = new StudentRegistrationRequest
         {
             name = $"{firstName} {lastName}",
             email = email,
-            password = passwordInput.text,  // Include password
-            class_code = "2EK5QUY",  // Use existing class code for testing
+            password = passwordInput.text,
             device_id = SystemInfo.deviceUniqueIdentifier,
             grade_level = "Grade 1",
             avatar_url = ""
@@ -172,8 +171,7 @@ public class StudentRegistrationRequest
 {
     public string name;
     public string email;
-    public string password;  // Added password field
-    public string class_code;
+    public string password;
     public string device_id;
     public string grade_level;
     public string avatar_url;
