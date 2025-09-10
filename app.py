@@ -1811,6 +1811,96 @@ def test_status():
         db.close()
 
 
+# ==================== UNITY API ENDPOINTS (FLASK) ====================
+@app.route("/api/student/register", methods=["POST"])
+def api_register_student():
+    """Flask endpoint for Unity game student registration"""
+    db = SessionLocal()
+    try:
+        # Get JSON data from request
+        student_data = request.get_json()
+        if not student_data:
+            return {"status": "error", "message": "No data provided"}, 400
+        
+        name = student_data.get("name", "").strip()
+        email = student_data.get("email", "").strip()
+        class_code = student_data.get("class_code", "").strip()
+        device_id = student_data.get("device_id", "").strip()
+        grade_level = student_data.get("grade_level", "").strip()
+        avatar_url = student_data.get("avatar_url", "").strip()
+        
+        if not all([name, email, class_code]):
+            return {"status": "error", "message": "Name, email, and class code are required"}, 400
+        
+        # Check if class exists
+        class_ = db.query(Class).filter_by(class_code=class_code).first()
+        if not class_:
+            return {"status": "error", "message": "Invalid class code"}, 404
+        
+        # Check if student already exists
+        existing_student = db.query(Student).filter_by(email=email).first()
+        if existing_student:
+            # Update device_id and last_active for existing student
+            existing_student.device_id = device_id
+            existing_student.last_active = datetime.utcnow()
+            if grade_level:
+                existing_student.grade_level = grade_level
+            if avatar_url:
+                existing_student.avatar_url = avatar_url
+                
+            # Check if already enrolled
+            existing_enrollment = db.query(Enrollment).filter_by(
+                student_id=existing_student.id, class_id=class_.id
+            ).first()
+            if not existing_enrollment:
+                # Enroll existing student in new class
+                enrollment = Enrollment(student_id=existing_student.id, class_id=class_.id)
+                db.add(enrollment)
+            
+            db.commit()
+            return {
+                "status": "success",
+                "student_id": existing_student.id,
+                "student_name": existing_student.name,
+                "class_name": class_.name,
+                "total_points": existing_student.total_points,
+                "message": "Student enrolled successfully"
+            }
+        
+        # Create new student
+        new_student = Student(
+            name=name, 
+            email=email,
+            device_id=device_id,
+            grade_level=grade_level,
+            avatar_url=avatar_url,
+            total_points=0,
+            last_active=datetime.utcnow()
+        )
+        db.add(new_student)
+        db.flush()  # Get student ID
+        
+        # Enroll in class
+        enrollment = Enrollment(student_id=new_student.id, class_id=class_.id)
+        db.add(enrollment)
+        db.commit()
+        
+        return {
+            "status": "success",
+            "student_id": new_student.id,
+            "student_name": new_student.name,
+            "class_name": class_.name,
+            "total_points": new_student.total_points,
+            "message": "Registration successful"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        return {"status": "error", "message": str(e)}, 500
+    finally:
+        db.close()
+
+
 # ==================== SERVER STARTUP ====================
 
 def run_flask():
