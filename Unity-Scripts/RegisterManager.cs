@@ -15,6 +15,7 @@ public class RegisterManager : MonoBehaviour
     public TMP_InputField firstNameInput;
     public TMP_InputField lastNameInput;
     public TMP_InputField emailInput;
+    public TMP_InputField classCodeInput;  // User enters class code from teacher
     public TMP_InputField passwordInput;
     public TMP_InputField confirmPasswordInput;
 
@@ -36,12 +37,14 @@ public class RegisterManager : MonoBehaviour
         string firstName = firstNameInput.text.Trim();
         string lastName = lastNameInput.text.Trim();
         string email = emailInput.text.Trim();
+        string classCode = classCodeInput.text.Trim();
         string password = passwordInput.text;
         string confirmPassword = confirmPasswordInput.text;
 
         // Basic validation
         if (string.IsNullOrEmpty(firstName) || string.IsNullOrEmpty(lastName) ||
-            string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password) || string.IsNullOrEmpty(confirmPassword))
+            string.IsNullOrEmpty(email) || string.IsNullOrEmpty(classCode) || 
+            string.IsNullOrEmpty(password) || string.IsNullOrEmpty(confirmPassword))
         {
             ShowMessage("Please fill in all fields.", false);
             return;
@@ -56,17 +59,17 @@ public class RegisterManager : MonoBehaviour
         // Start registration
         ShowMessage("Registering student...", true);
         submitButton.interactable = false;
-        StartCoroutine(RegisterStudent(firstName, lastName, email));
+        StartCoroutine(RegisterStudent(firstName, lastName, email, classCode));
     }
 
-    IEnumerator RegisterStudent(string firstName, string lastName, string email)
+    IEnumerator RegisterStudent(string firstName, string lastName, string email, string classCode)
     {
         // Prepare data for the API
         var studentData = new StudentRegistrationRequest
         {
             name = $"{firstName} {lastName}",
             email = email,
-            class_code = "2EK5QUY",
+            class_code = classCode,  // Use the class code entered by user
             device_id = SystemInfo.deviceUniqueIdentifier,
             grade_level = "Grade 1",
             avatar_url = ""
@@ -156,6 +159,7 @@ public class RegisterManager : MonoBehaviour
         firstNameInput.text = "";
         lastNameInput.text = "";
         emailInput.text = "";
+        classCodeInput.text = "";
         passwordInput.text = "";
         confirmPasswordInput.text = "";
     }
