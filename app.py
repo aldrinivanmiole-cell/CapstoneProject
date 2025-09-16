@@ -290,17 +290,35 @@ upgrade_schema()
 def seed_default_admin():
     db = SessionLocal()
     try:
+        print("Checking for existing admin accounts...")
         existing = db.query(Admin).count()
+        print(f"Found {existing} existing admin accounts")
+        
         if existing == 0:
             email = os.environ.get("ADMIN_EMAIL", "admin@capstone.local").strip()
             password = os.environ.get("ADMIN_PASSWORD", "Admin@12345").strip()
+            print(f"Creating default admin with email: {email}")
+            
             admin = Admin(email=email)
             admin.set_password(password)
             db.add(admin)
             db.commit()
-            print(f"Seeded default admin: {email}")
+            print(f"Successfully seeded default admin: {email}")
+        else:
+            print("Admin account already exists, skipping seed")
+            
+        # Verify admin was created/exists
+        admin_check = db.query(Admin).first()
+        if admin_check:
+            print(f"Admin verification successful: {admin_check.email}")
+        else:
+            print("ERROR: No admin found after seeding!")
+            
     except Exception as e:
-        print(f"Admin seeding skipped/failed: {e}")
+        print(f"Admin seeding error: {e}")
+        import traceback
+        traceback.print_exc()
+        db.rollback()
     finally:
         db.close()
 
@@ -1962,34 +1980,54 @@ def require_admin():
 
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
-    if session.get("admin_id"):
-        return redirect(url_for("admin_dashboard"))
-    error = None
-    if request.method == "POST":
-        email = request.form.get("email", "").strip()
-        password = request.form.get("password", "").strip()
+    try:
+        print(f"Admin login accessed - Method: {request.method}")
+        if session.get("admin_id"):
+            print("Admin already logged in, redirecting to dashboard")
+            return redirect(url_for("admin_dashboard"))
         
-        if not email or not password:
-            error = "Email and password are required"
-        else:
-            db = SessionLocal()
-            try:
-                admin = db.query(Admin).filter_by(email=email).first()
-                if not admin:
-                    error = "Invalid email or password"
-                elif not admin.check_password(password):
-                    error = "Invalid email or password"
-                else:
-                    session["admin_id"] = admin.id
-                    session["admin_email"] = admin.email
-                    flash("Welcome, Admin!", "success")
-                    return redirect(url_for("admin_dashboard"))
-            except Exception as e:
-                print(f"Admin login error: {str(e)}")
-                error = "Login failed. Please try again."
-            finally:
-                db.close()
-    return render_template("admin_login.html", error=error)
+        error = None
+        if request.method == "POST":
+            print("Processing admin login POST")
+            email = request.form.get("email", "").strip()
+            password = request.form.get("password", "").strip()
+            print(f"Login attempt for email: {email}")
+            
+            if not email or not password:
+                error = "Email and password are required"
+                print("Missing email or password")
+            else:
+                db = SessionLocal()
+                try:
+                    print("Querying for admin user")
+                    admin = db.query(Admin).filter_by(email=email).first()
+                    if not admin:
+                        print(f"No admin found with email: {email}")
+                        error = "Invalid email or password"
+                    elif not admin.check_password(password):
+                        print("Password check failed")
+                        error = "Invalid email or password"
+                    else:
+                        print("Admin login successful")
+                        session["admin_id"] = admin.id
+                        session["admin_email"] = admin.email
+                        flash("Welcome, Admin!", "success")
+                        return redirect(url_for("admin_dashboard"))
+                except Exception as e:
+                    print(f"Database error during admin login: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    error = "Login failed. Please try again."
+                finally:
+                    db.close()
+        
+        print("Rendering admin login template")
+        return render_template("admin_login.html", error=error)
+    except Exception as e:
+        print(f"Critical error in admin_login route: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return f"Admin login error: {str(e)}", 500
 
 @app.route("/admin/logout")
 def admin_logout():
@@ -1999,39 +2037,69 @@ def admin_logout():
 
 @app.route("/admin")
 def admin_dashboard():
-    if require_admin():
-        return require_admin()
-    db = SessionLocal()
     try:
-        teacher_count = db.query(Teacher).count()
-        student_count = db.query(Student).count()
-        class_count = db.query(Class).filter_by(is_archived=False).count()
-        enrollment_count = db.query(Enrollment).count()
+        print("Admin dashboard accessed")
+        if require_admin():
+            print("Admin authentication failed, redirecting to login")
+            return require_admin()
         
-        # Get recent classes with proper error handling
+        print("Creating database session")
+        db = SessionLocal()
         try:
-            classes = db.query(Class).options(joinedload(Class.teacher)).filter_by(is_archived=False).order_by(Class.id.desc()).limit(10).all()
-        except Exception as class_error:
-            print(f"Error loading classes: {class_error}")
-            classes = []
-        
-        return render_template("admin_dashboard.html", 
-                               teacher_count=teacher_count, 
-                               student_count=student_count,
-                               class_count=class_count,
-                               enrollment_count=enrollment_count,
-                               classes=classes)
+            print("Querying teacher count")
+            teacher_count = db.query(Teacher).count()
+            print(f"Teacher count: {teacher_count}")
+            
+            print("Querying student count")
+            student_count = db.query(Student).count()
+            print(f"Student count: {student_count}")
+            
+            print("Querying class count")
+            class_count = db.query(Class).filter_by(is_archived=False).count()
+            print(f"Class count: {class_count}")
+            
+            print("Querying enrollment count")
+            enrollment_count = db.query(Enrollment).count()
+            print(f"Enrollment count: {enrollment_count}")
+            
+            # Get recent classes with proper error handling
+            print("Querying recent classes")
+            try:
+                classes = db.query(Class).options(joinedload(Class.teacher)).filter_by(is_archived=False).order_by(Class.id.desc()).limit(10).all()
+                print(f"Found {len(classes)} recent classes")
+            except Exception as class_error:
+                print(f"Error loading classes: {class_error}")
+                import traceback
+                traceback.print_exc()
+                classes = []
+            
+            print("Rendering admin dashboard template")
+            return render_template("admin_dashboard.html", 
+                                   teacher_count=teacher_count, 
+                                   student_count=student_count,
+                                   class_count=class_count,
+                                   enrollment_count=enrollment_count,
+                                   classes=classes)
+        except Exception as e:
+            print(f"Database error in admin dashboard: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            db.rollback()
+            print("Rendering dashboard with fallback values")
+            return render_template("admin_dashboard.html", 
+                                   teacher_count=0, 
+                                   student_count=0,
+                                   class_count=0,
+                                   enrollment_count=0,
+                                   classes=[])
+        finally:
+            print("Closing database session")
+            db.close()
     except Exception as e:
-        print(f"Admin dashboard error: {str(e)}")
-        db.rollback()
-        return render_template("admin_dashboard.html", 
-                               teacher_count=0, 
-                               student_count=0,
-                               class_count=0,
-                               enrollment_count=0,
-                               classes=[])
-    finally:
-        db.close()
+        print(f"Critical error in admin_dashboard route: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return f"Admin dashboard error: {str(e)}", 500
 
 @app.route("/admin/create", methods=["GET", "POST"])
 def admin_create():
@@ -2941,14 +3009,39 @@ def assignment_results(assignment_id):
 
 # Combined ASGI application for production
 def create_combined_app():
-
+    print("Creating combined app...")
+    
+    # Initialize database and tables
+    print("Initializing database...")
+    init_db()
+    
+    # Ensure tables are created
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("Database tables created successfully")
+    except Exception as e:
+        print(f"Database table creation error: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    # Seed admin data
+    print("Seeding admin data...")
+    seed_default_admin()
+    
     # FastAPI is the main app
     main_app = api  # Use our existing FastAPI app
+    print("FastAPI app initialized")
     
     # Mount Flask for web dashboard at a sub-path 
     main_app.mount("/dashboard", WSGIMiddleware(app))
+    print("Flask app mounted on FastAPI at /dashboard")
     
     return main_app
+
+# Add a simple admin test route
+@app.route("/admin/test")
+def admin_test():
+    return "Admin route is working!", 200
 
 # Create the combined app instance for production deployment
 combined_app = create_combined_app()
