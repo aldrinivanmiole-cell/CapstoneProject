@@ -1997,13 +1997,13 @@ def admin_dashboard():
         teacher_count = db.query(Teacher).count()
         student_count = db.query(Student).count()
         class_count = db.query(Class).count()
-        archived_count = db.query(Class).filter_by(is_archived=True).count()
-        classes = db.query(Class).order_by(Class.created_at.desc()).limit(20).all()
+        enrollment_count = db.query(Enrollment).count()
+        classes = db.query(Class).filter_by(is_archived=False).order_by(Class.created_at.desc()).limit(10).all()
         return render_template("admin_dashboard.html", 
                                teacher_count=teacher_count, 
                                student_count=student_count,
                                class_count=class_count,
-                               archived_count=archived_count,
+                               enrollment_count=enrollment_count,
                                classes=classes)
     finally:
         db.close()
