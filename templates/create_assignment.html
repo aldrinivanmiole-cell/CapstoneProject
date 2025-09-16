@@ -50,24 +50,13 @@
         </button>
       </div>
       <div class="col-md-6 col-lg-3">
-        <button type="button" class="btn btn-outline-purple w-100 question-type-btn" data-type="fill_in_the_blanks" onclick="setQuestionType('fill_in_the_blanks')">
-          <span class="material-icons d-block mb-1">format_color_fill</span>
-          Fill in the Blanks<br>
-          <small>10 Questions</small>
-        </button>
-      </div>
-      <div class="col-md-6 col-lg-3">
-        <button type="button" class="btn btn-outline-secondary w-100 question-type-btn" data-type="yes_no" onclick="setQuestionType('yes_no')">
-          <span class="material-icons d-block mb-1">help_outline</span>
-          Yes/No<br>
-          <small>10 Questions</small>
-        </button>
-      </div>
-      <div class="col-md-6 col-lg-3">
         <button type="button" class="btn btn-outline-dark w-100" onclick="showCustomTemplate()">
           <span class="material-icons d-block mb-1">settings</span>
           Custom Template<br>
           <small>Choose your own</small>
+        </button>
+      </div>
+    </div>
         </button>
       </div>
     </div>
@@ -87,9 +76,7 @@
           <label class="form-label">Question Type</label>
           <select class="form-select" id="customType">
             <option value="multiple_choice">Multiple Choice</option>
-            <option value="yes_no">Yes/No</option>
             <option value="identification">Identification</option>
-            <option value="fill_in_the_blanks">Fill in the Blanks</option>
             <option value="problem_solving">Problem Solving</option>
             <option value="enumeration">Enumeration</option>
             <option value="essay">Essay</option>
@@ -179,9 +166,7 @@ let qId = 0;
 
 const typeOptions = [
   {value: 'multiple_choice', label: 'Multiple choice'},
-  {value: 'yes_no', label: 'Yes/No'},
   {value: 'identification', label: 'Identification'},
-  {value: 'fill_in_the_blanks', label: 'Fill in the blanks'},
   {value: 'enumeration', label: 'Enumeration'},
   {value: 'problem_solving', label: 'Problem solving'},
   {value: 'essay', label: 'Essay'}
@@ -214,8 +199,6 @@ function addQuestionOfType(type) {
   if (type === 'multiple_choice') {
     question.options = ['Option A', 'Option B', 'Option C', 'Option D'];
     question.correct_answers = ['Option A'];
-  } else if (type === 'fill_in_the_blanks') {
-    question.correct_answers = ['answer1', 'answer2'];
   }
   
   questions.push(question);
@@ -333,58 +316,11 @@ function renderQuestions() {
       } else if (qt === 'identification') {
         extraDiv.innerHTML = `
           <label class="form-label">Correct answer</label>
-          <input type="text" class="form-control identification-answer" value="${q.correct_answer||''}" placeholder="Enter the correct answer">`;
-        extraDiv.querySelector('.identification-answer').oninput = e => { q.correct_answer = e.target.value; };
-      } else if (qt === 'fill_in_the_blanks') {
-        extraDiv.innerHTML = `
-          <div class="mb-3">
-            <label class="form-label">Question Text</label>
-            <small class="text-muted d-block mb-2">Type your question and use _____ for blanks</small>
-            <div class="alert alert-info p-2">
-              <strong>Example:</strong> The capital of _____ is _____.
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Answers for Blanks</label>
-            <div class="answers-list"></div>
-            <button type="button" class="btn btn-sm btn-success add-answer-btn">+ Add Answer</button>
-          </div>`;
-        
-        const answersList = extraDiv.querySelector('.answers-list');
-        
-        function renderAnswers() {
-          answersList.innerHTML = '';
-          q.correct_answers = q.correct_answers || [];
-          
-          q.correct_answers.forEach((answer, index) => {
-            answersList.innerHTML += `
-              <div class="d-flex gap-2 mb-2">
-                <span class="badge bg-primary">Blank ${index + 1}</span>
-                <input type="text" class="form-control answer-input" value="${answer}" placeholder="Answer ${index + 1}">
-                <button type="button" class="btn btn-sm btn-danger remove-btn" data-index="${index}">×</button>
-              </div>`;
-          });
-          
-          // Add event listeners
-          answersList.querySelectorAll('.answer-input').forEach((input, index) => {
-            input.oninput = () => q.correct_answers[index] = input.value;
-          });
-          
-          answersList.querySelectorAll('.remove-btn').forEach(btn => {
-            btn.onclick = () => {
-              q.correct_answers.splice(btn.dataset.index, 1);
-              renderAnswers();
-            };
-          });
-        }
-        
-        extraDiv.querySelector('.add-answer-btn').onclick = () => {
-          q.correct_answers.push('');
-          renderAnswers();
+          <input type="text" class="form-control identification-answer" value="${(q.correct_answers && q.correct_answers[0]) || q.correct_answer || ''}" placeholder="Enter the correct answer">`;
+        extraDiv.querySelector('.identification-answer').oninput = e => { 
+          q.correct_answers = [e.target.value];
+          q.correct_answer = e.target.value; // For backward compatibility
         };
-        
-        renderAnswers();
-        
       } else if (qt === 'enumeration') {
         extraDiv.innerHTML = `
           <div class="mb-3">
@@ -456,33 +392,11 @@ function renderQuestions() {
       } else if (qt === 'problem_solving') {
         extraDiv.innerHTML = `
           <label class="form-label">Correct answer</label>
-          <input type="text" class="form-control ps-answer" value="${q.correct_answer||''}" placeholder="Enter the correct answer">`;
-        extraDiv.querySelector('.ps-answer').oninput = e => { q.correct_answer = e.target.value; };
-      } else if (qt === 'yes_no') {
-        // Yes/No questions automatically have Yes and No options
-        q.options = ['Yes', 'No'];
-        q.correct_answers = q.correct_answers || [];
-        
-        extraDiv.innerHTML = `
-          <div class="mb-3">
-            <label class="form-label">Correct Answer</label>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="yes_no_${q.id}" id="yes_${q.id}" value="Yes" ${q.correct_answers.includes('Yes') ? 'checked' : ''}>
-              <label class="form-check-label" for="yes_${q.id}">Yes</label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="yes_no_${q.id}" id="no_${q.id}" value="No" ${q.correct_answers.includes('No') ? 'checked' : ''}>
-              <label class="form-check-label" for="no_${q.id}">No</label>
-            </div>
-          </div>`;
-        
-        extraDiv.querySelectorAll('input[type="radio"]').forEach(radio => {
-          radio.onchange = e => {
-            if (e.target.checked) {
-              q.correct_answers = [e.target.value];
-            }
-          };
-        });
+          <input type="text" class="form-control ps-answer" value="${(q.correct_answers && q.correct_answers[0]) || q.correct_answer || ''}" placeholder="Enter the correct answer">`;
+        extraDiv.querySelector('.ps-answer').oninput = e => { 
+          q.correct_answers = [e.target.value];
+          q.correct_answer = e.target.value; // For backward compatibility
+        };
       }
       // essay: nothing extra
     }
@@ -550,9 +464,7 @@ function updateQuestionTypeUI(type) {
 function showAddAnotherButton(type) {
   const typeNames = {
     'multiple_choice': 'Multiple Choice',
-    'yes_no': 'Yes/No',
     'identification': 'Identification',
-    'fill_in_the_blanks': 'Fill in the Blanks',
     'enumeration': 'Enumeration',
     'problem_solving': 'Problem Solving',
     'essay': 'Essay'
@@ -616,9 +528,7 @@ function getButtonColor(type) {
     'problem_solving': 'success',
     'enumeration': 'info',
     'essay': 'warning',
-    'identification': 'info',
-    'fill_in_the_blanks': 'purple',
-    'yes_no': 'secondary'
+    'identification': 'info'
   };
   return colors[type] || 'primary';
 }

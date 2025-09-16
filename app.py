@@ -2375,12 +2375,15 @@ def create_assignment(class_id):
 
     db = SessionLocal()
     try:
+        print(f"Creating assignment for class {class_id}")
+        
         # Ensure class belongs to current teacher, or allow admin
         if session.get("admin_id"):
             class_ = db.query(Class).filter_by(id=class_id).first()
         else:
             class_ = db.query(Class).filter_by(id=class_id, teacher_id=session["teacher_id"]).first()
         if not class_:
+            print(f"Class {class_id} not found")
             flash("Class not found", "danger")
             # Admin returns to assignments list for this class
             if session.get("admin_id"):
@@ -2388,31 +2391,41 @@ def create_assignment(class_id):
             return redirect(url_for("index"))
 
         if request.method == "POST":
+            print("Processing POST request for assignment creation")
             title = request.form.get("title", "").strip()
             description = request.form.get("description", "").strip()
             questions_json = request.form.get("questions", "[]")
+            
+            print(f"Assignment title: {title}")
+            print(f"Questions JSON: {questions_json}")
 
             if not title:
+                print("Assignment title is missing")
                 flash("Assignment title is required", "danger")
                 return render_template("create_assignment.html", class_=class_)
 
             try:
                 questions_data = json.loads(questions_json)
+                print(f"Parsed {len(questions_data)} questions")
             except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
                 flash("Invalid questions data", "danger")
                 return render_template("create_assignment.html", class_=class_)
 
             assignment = Assignment(class_id=class_id, title=title, description=description)
             db.add(assignment)
             db.flush()  # get assignment.id
+            print(f"Created assignment with ID: {assignment.id}")
 
-            for q in questions_data:
+            for i, q in enumerate(questions_data):
+                print(f"Processing question {i+1}: {q}")
                 q_text = q.get("text", "").strip()
                 q_type = q.get("type")
                 points = int(q.get("points", 1))
                 help_video_url = q.get("help_video_url", "").strip()
 
                 if not q_text or q_type not in ["multiple_choice", "identification", "enumeration", "problem_solving", "essay"]:
+                    print(f"Skipping invalid question {i+1}: type={q_type}, text='{q_text}'")
                     continue  # skip invalid question
 
                 question = Question(
@@ -2424,34 +2437,51 @@ def create_assignment(class_id):
                 )
                 db.add(question)
                 db.flush()
+                print(f"Created question {i+1} with ID: {question.id}")
 
                 # Handle specific types
                 if q_type == "multiple_choice":
                     options = q.get("options", [])
                     correct_answers = q.get("correct_answers", [])
+                    print(f"Multiple choice - options: {options}, correct: {correct_answers}")
                     for opt in options:
-                        db.add(QuestionOption(question_id=question.id, option_text=opt))
+                        if opt.strip():  # Only add non-empty options
+                            db.add(QuestionOption(question_id=question.id, option_text=opt.strip()))
                     for ans in correct_answers:
-                        db.add(CorrectAnswer(question_id=question.id, answer_text=ans))
+                        if ans.strip():  # Only add non-empty answers
+                            db.add(CorrectAnswer(question_id=question.id, answer_text=ans.strip()))
 
                 elif q_type == "identification":
+                    # Support both singular and plural forms for compatibility
                     correct = q.get("correct_answer", "")
-                    if correct:
-                        db.add(CorrectAnswer(question_id=question.id, answer_text=correct))
+                    if not correct:
+                        correct_answers = q.get("correct_answers", [])
+                        correct = correct_answers[0] if correct_answers else ""
+                    print(f"Identification - correct: {correct}")
+                    if correct.strip():
+                        db.add(CorrectAnswer(question_id=question.id, answer_text=correct.strip()))
 
                 elif q_type == "enumeration":
                     correct_answers = q.get("correct_answers", [])
+                    print(f"Enumeration - correct answers: {correct_answers}")
                     for ans in correct_answers:
-                        db.add(CorrectAnswer(question_id=question.id, answer_text=ans))
+                        if ans.strip():  # Only add non-empty answers
+                            db.add(CorrectAnswer(question_id=question.id, answer_text=ans.strip()))
 
                 elif q_type == "problem_solving":
+                    # Support both singular and plural forms for compatibility
                     correct = q.get("correct_answer", "")
-                    if correct:
-                        db.add(CorrectAnswer(question_id=question.id, answer_text=correct))
+                    if not correct:
+                        correct_answers = q.get("correct_answers", [])
+                        correct = correct_answers[0] if correct_answers else ""
+                    print(f"Problem solving - correct: {correct}")
+                    if correct.strip():
+                        db.add(CorrectAnswer(question_id=question.id, answer_text=correct.strip()))
 
                 # essay: no correct answer
 
             db.commit()
+            print("Assignment created successfully")
             flash("Assignment created successfully!", "success")
             if session.get("admin_id"):
                 return redirect(url_for("admin_class_assignments", class_id=class_id))
@@ -2461,10 +2491,16 @@ def create_assignment(class_id):
         return render_template("create_assignment.html", class_=class_)
 
     except SQLAlchemyError as e:
+        print(f"SQLAlchemy error during assignment creation: {e}")
+        import traceback
+        traceback.print_exc()
         db.rollback()
         flash("An error occurred while creating the assignment", "danger")
         return redirect(url_for("index"))
     except Exception as e:
+        print(f"Unexpected error during assignment creation: {e}")
+        import traceback
+        traceback.print_exc()
         db.rollback()
         flash("An error occurred while creating the assignment", "danger")
         return redirect(url_for("index"))
