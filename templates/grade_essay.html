@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Grade Essay{% endblock %}
+{% block content %}
+<div class="card p-4">
+  <h2 class="fw-semibold mb-4">Grade Essay Response</h2>
+  
+  <div class="mb-4">
+    <h5>Question</h5>
+    <p class="border-start border-4 border-primary ps-3">{{ answer.question.question_text }}</p>
+  </div>
+
+  <div class="mb-4">
+    <h5>Student's Answer</h5>
+    <div class="border rounded p-3 bg-light">
+      {{ answer.answer_text|nl2br }}
+    </div>
+  </div>
+
+  <form method="post">
+    <div class="mb-3">
+      <label for="points" class="form-label">Points (out of {{ answer.question.points }})</label>
+      <input type="number" class="form-control" id="points" name="points" 
+             min="0" max="{{ answer.question.points }}" required
+             value="{{ answer.points_earned if answer.points_earned is not none else 0 }}">
+    </div>
+
+    <div class="mb-3">
+      <label for="feedback" class="form-label">Feedback</label>
+      <textarea class="form-control" id="feedback" name="feedback" rows="4" required>{{ answer.feedback or '' }}</textarea>
+    </div>
+
+    <div class="d-flex justify-content-between">
+      <a href="{{ url_for('view_quiz', quiz_id=answer.question.quiz_id) }}" class="btn btn-outline-secondary">Back to Quiz</a>
+      <button type="submit" class="btn btn-primary">Save Grade</button>
+    </div>
+  </form>
+</div>
+{% endblock %} 

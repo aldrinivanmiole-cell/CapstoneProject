@@ -1,0 +1,78 @@
+{% extends 'admin_base.html' %}
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>Edit Teacher</h3>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin_teachers') }}">Back to Teachers</a>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
+
+  <div class="card p-3">
+    <form method="post" class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">First Name</label>
+        <input class="form-control" name="first_name" value="{{ teacher.first_name }}" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Last Name</label>
+        <input class="form-control" name="last_name" value="{{ teacher.last_name }}" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Email</label>
+        <input type="email" class="form-control" name="email" value="{{ teacher.email }}" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">New Password</label>
+        <input type="password" class="form-control" name="password" placeholder="Leave blank to keep current password">
+        <div class="form-text">Only enter a password if you want to change it</div>
+      </div>
+      
+      <div class="col-12">
+        <div class="d-flex gap-2 justify-content-end">
+          <a class="btn btn-secondary" href="{{ url_for('admin_teachers') }}">Cancel</a>
+          <button class="btn btn-primary">Update Teacher</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card p-3 mt-4">
+    <h5 class="mb-3">Classes Taught</h5>
+    {% if teacher.classes %}
+    <div class="table-responsive">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Class Name</th>
+            <th>Section</th>
+            <th>Class Code</th>
+            <th>Students</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for class in teacher.classes %}
+          <tr>
+            <td>{{ class.name }}</td>
+            <td>{{ class.section or 'N/A' }}</td>
+            <td><code>{{ class.class_code }}</code></td>
+            <td>{{ class.enrollments|length }}</td>
+            <td>{{ class.created_at.strftime('%Y-%m-%d') if class.created_at }}</td>
+            <td>
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin_class_assignments', class_id=class.id) }}">Assignments</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted">This teacher has no classes assigned.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

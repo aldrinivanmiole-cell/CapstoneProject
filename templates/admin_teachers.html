@@ -1,0 +1,67 @@
+{% extends 'admin_base.html' %}
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>Manage Teachers</h3>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin_dashboard') }}">Back to Dashboard</a>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
+
+  <div class="card p-3 mb-4">
+    <h5 class="mb-3">Add Teacher</h5>
+    <form method="post" class="row g-2">
+      <div class="col-sm-6 col-lg-3">
+        <input class="form-control" name="first_name" placeholder="First name" required>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <input class="form-control" name="last_name" placeholder="Last name" required>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <input type="email" class="form-control" name="email" placeholder="Email" required>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <input type="password" class="form-control" name="password" placeholder="Password" required>
+      </div>
+      <div class="col-12 d-flex justify-content-end">
+        <button class="btn btn-primary">Create</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card p-3">
+    <h5 class="mb-3">All Teachers</h5>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Created</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in teachers %}
+          <tr>
+            <td>{{ t.first_name }} {{ t.last_name }}</td>
+            <td>{{ t.email }}</td>
+            <td>{{ t.created_at.strftime('%Y-%m-%d') if t.created_at }}</td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm">
+                <a class="btn btn-outline-primary" href="{{ url_for('admin_edit_teacher', teacher_id=t.id) }}">Edit</a>
+                <form method="post" action="{{ url_for('admin_delete_teacher', teacher_id=t.id) }}" style="display: inline;" onsubmit="return confirm('Delete this teacher?');">
+                  <button class="btn btn-outline-danger">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

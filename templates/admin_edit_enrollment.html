@@ -1,0 +1,74 @@
+{% extends 'admin_base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2><i class="bi bi-pencil-square"></i> Edit Enrollment</h2>
+  <a href="{{ url_for('admin_enrollments') }}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i> Back to Enrollments
+  </a>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h5 class="mb-0">Edit Enrollment Details</h5>
+  </div>
+  <div class="card-body">
+    <form method="post">
+      <div class="row">
+        <div class="col-md-6">
+          <div class="mb-3">
+            <label for="student_id" class="form-label">Student</label>
+            <select class="form-control" id="student_id" name="student_id" required>
+              <option value="">Select a student</option>
+              {% for student in students %}
+              <option value="{{ student.id }}" {{ 'selected' if student.id == enrollment.student_id else '' }}>
+                {{ student.name }} ({{ student.email }})
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="mb-3">
+            <label for="class_id" class="form-label">Class</label>
+            <select class="form-control" id="class_id" name="class_id" required>
+              <option value="">Select a class</option>
+              {% for class in classes %}
+              <option value="{{ class.id }}" {{ 'selected' if class.id == enrollment.class_id else '' }}>
+                {{ class.name }}{% if class.section %} - {{ class.section }}{% endif %} ({{ class.class_code }})
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+      
+      <div class="row">
+        <div class="col-md-6">
+          <div class="mb-3">
+            <label class="form-label">Current Student</label>
+            <div class="form-control-plaintext">{{ enrollment.student.name }}</div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="mb-3">
+            <label class="form-label">Current Class</label>
+            <div class="form-control-plaintext">{{ enrollment.class_.name }}{% if enrollment.class_.section %} - {{ enrollment.class_.section }}{% endif %}</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="mb-3">
+        <label class="form-label">Enrolled Date</label>
+        <div class="form-control-plaintext">{{ enrollment.enrolled_at.strftime('%Y-%m-%d %H:%M') if enrollment.enrolled_at }}</div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-check-lg"></i> Update Enrollment
+        </button>
+        <a href="{{ url_for('admin_enrollments') }}" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

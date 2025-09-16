@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+  <h3>Archived Classes</h3>
+  {% if classes %}
+  <div class="list-group mt-3">
+    {% for c in classes %}
+    <div class="list-group-item d-flex justify-content-between align-items-center">
+      <div>
+        <div class="fw-bold">{{ c.name }}{% if c.section %} - {{ c.section }}{% endif %}</div>
+        <div class="text-muted small">Code: {{ c.class_code }}{% if c.archived_at %} • Archived: {{ c.archived_at }}{% endif %}</div>
+      </div>
+      <form method="post" action="{{ url_for('restore_class', class_id=c.id) }}">
+        <button class="btn btn-sm btn-outline-primary" type="submit">Restore</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="text-muted">No archived classes.</p>
+  {% endif %}
+</div>
+{% endblock %}

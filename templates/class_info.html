@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+{% block title %}{{ class_.name }} - Class Info{% endblock %}
+
+{% block extra_styles %}
+<style>
+.progress-ring {
+    transform: rotate(-90deg);
+}
+.assignment-card {
+    transition: all 0.2s ease;
+    border-left: 4px solid transparent;
+}
+.assignment-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border-left-color: #007bff;
+}
+.student-avatar {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 16px;
+}
+.completion-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid white;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+/* Fix dropdown positioning and z-index issues */
+.assignment-card .dropdown, .assignment-card .dropstart {
+    position: relative;
+}
+
+.assignment-card .dropdown-menu {
+    position: absolute !important;
+    z-index: 1050 !important;
+    min-width: 180px;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(0, 0, 0, 0.125);
+    margin-top: 0.125rem;
+}
+
+/* Dropstart specific positioning - forces left positioning */
+.assignment-card .dropstart .dropdown-menu {
+    right: 100% !important;
+    left: auto !important;
+    top: 0 !important;
+    transform: translateX(-8px) !important;
+    margin-top: 0 !important;
+    margin-right: 0.125rem !important;
+}
+
+/* Container constraints to prevent overflow */
+.assignment-card {
+    position: relative;
+    overflow: hidden; /* Prevent any overflow */
+}
+
+.assignment-card .col-md-2 {
+    position: relative;
+    overflow: visible; /* Allow dropdown to show */
+}
+
+/* Ensure the assignments section doesn't overflow */
+.col-lg-8 {
+    position: relative;
+    z-index: 1;
+    overflow: visible;
+}
+
+.col-lg-8 .card {
+    overflow: visible;
+}
+
+.col-lg-8 .card-body {
+    overflow: visible;
+}
+
+/* Ensure student section doesn't interfere */
+.col-lg-4 {
+    position: relative;
+    z-index: 0;
+}
+
+/* Additional fix for the button group container */
+.assignment-card .btn-group {
+    position: relative;
+}
+
+.assignment-card .text-end {
+    overflow: visible;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Classes</a></li>
+                    <li class="breadcrumb-item active">{{ class_.name }}</li>
+                </ol>
+            </nav>
+            <h1 class="h3 mb-1">{{ class_.name }}</h1>
+            {% if class_.section %}
+            <p class="text-muted mb-2">Section: {{ class_.section }}</p>
+            {% endif %}
+            <div class="d-flex gap-2 flex-wrap">
+                <span class="badge bg-primary">{{ class_.class_code }}</span>
+                <span class="badge bg-secondary">{{ students|length }} student{{ 's' if students|length != 1 else '' }}</span>
+                <span class="badge bg-info">{{ assignments|length }} assignment{{ 's' if assignments|length != 1 else '' }}</span>
+            </div>
+        </div>
+        <div class="btn-group">
+            <a href="{{ url_for('create_assignment', class_id=class_.id) }}" class="btn btn-primary">
+                <i class="material-icons me-1">add</i>New Assignment
+            </a>
+            <button class="btn btn-outline-secondary" onclick="copyClassCode('{{ class_.class_code }}')">
+                <i class="material-icons me-1">content_copy</i>Copy Code
+            </button>
+        </div>
+    </div>
+
+    <!-- Class Overview Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-4 text-primary mb-2">{{ students|length }}</div>
+                    <h6 class="card-title">Total Students</h6>
+                    <small class="text-muted">Enrolled in class</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <div class="display-4 text-success mb-2">{{ assignments|length }}</div>
+                    <h6 class="card-title">Assignments</h6>
+                    <small class="text-muted">Created</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    {% set total_submissions = assignment_stats|sum(attribute='submitted_count') %}
+                    {% set total_possible = assignment_stats|sum(attribute='total_students') %}
+                    {% set avg_completion = (total_submissions / total_possible * 100) if total_possible > 0 else 0 %}
+                    <div class="display-4 text-warning mb-2">{{ "%.0f"|format(avg_completion) }}%</div>
+                    <h6 class="card-title">Avg Completion</h6>
+                    <small class="text-muted">Across all assignments</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Assignments Column -->
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="mb-0">Assignments</h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if assignment_stats %}
+                        {% for stat in assignment_stats %}
+                        <div class="assignment-card p-3 border-bottom">
+                            <div class="row align-items-center">
+                                <div class="col-md-6">
+                                    <div class="d-flex align-items-center">
+                                        <div>
+                                            <h6 class="mb-1">{{ stat.assignment.title }}</h6>
+                                            <small class="text-muted">{{ stat.assignment.questions|length }} questions • {{ stat.assignment.questions|sum(attribute='points') }} points</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 text-center">
+                                    <div class="fw-bold">{{ stat.submitted_count }}/{{ stat.total_students }}</div>
+                                    <small class="text-muted">Submitted</small>
+                                </div>
+                                <div class="col-md-2 text-center">
+                                    <div class="progress mb-1" style="height: 8px;">
+                                        <div class="progress-bar" role="progressbar" style="width: {{ stat.completion_rate }}%"></div>
+                                    </div>
+                                    <small class="text-muted">{{ "%.0f"|format(stat.completion_rate) }}% complete</small>
+                                </div>
+                                <div class="col-md-2 text-end">
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{{ url_for('assignment_monitor', assignment_id=stat.assignment.id) }}" class="btn btn-outline-primary" title="Monitor Progress">
+                                            <i class="material-icons">analytics</i>
+                                        </a>
+                                        <a href="{{ url_for('view_assignment', assignment_id=stat.assignment.id) }}" class="btn btn-outline-secondary" title="View Assignment">
+                                            <i class="material-icons">visibility</i>
+                                        </a>
+                                        <div class="dropstart">
+                                            <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                <i class="material-icons">more_vert</i>
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                <li><a class="dropdown-item" href="{{ url_for('assignment_results', assignment_id=stat.assignment.id) }}">
+                                                    <i class="material-icons me-2">assignment_turned_in</i>View Results
+                                                </a></li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><a class="dropdown-item" href="{{ url_for('edit_assignment', assignment_id=stat.assignment.id) }}">
+                                                    <i class="material-icons me-2">edit</i>Edit
+                                                </a></li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><a class="dropdown-item text-danger" href="#" onclick="deleteAssignment({{ stat.assignment.id }}, '{{ stat.assignment.title }}')">
+                                                    <i class="material-icons me-2">delete</i>Delete
+                                                </a></li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="material-icons display-1 text-muted mb-3">assignment</i>
+                            <h5>No assignments yet</h5>
+                            <p class="text-muted mb-4">Create your first assignment to get started</p>
+                            <a href="{{ url_for('create_assignment', class_id=class_.id) }}" class="btn btn-primary">
+                                <i class="material-icons me-1">add</i>Create Assignment
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Students Column -->
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Students</h5>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="inviteStudents()">
+                            <i class="material-icons me-1">person_add</i>Invite
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0" style="max-height: 500px; overflow-y: auto;">
+                    {% if student_progress %}
+                        {% for progress in student_progress %}
+                        <div class="d-flex align-items-center p-3 border-bottom position-relative">
+                            <div class="student-avatar me-3">
+                                {{ progress.student.name[0].upper() }}
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-medium">{{ progress.student.name }}</div>
+                                <small class="text-muted">{{ progress.student.email }}</small>
+                                <div class="d-flex align-items-center mt-1">
+                                    <div class="progress me-2" style="height: 4px; width: 80px;">
+                                        <div class="progress-bar bg-success" style="width: {{ progress.completion_rate }}%"></div>
+                                    </div>
+                                    <small class="text-muted">{{ progress.completed_assignments }}/{{ progress.total_assignments }}</small>
+                                </div>
+                            </div>
+                            {% if progress.avg_percentage >= 90 %}
+                                <div class="completion-badge bg-success d-flex align-items-center justify-content-center">
+                                    <i class="material-icons" style="font-size: 12px;">star</i>
+                                </div>
+                            {% elif progress.completion_rate == 100 %}
+                                <div class="completion-badge bg-primary d-flex align-items-center justify-content-center">
+                                    <i class="material-icons" style="font-size: 12px;">check</i>
+                                </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="material-icons text-muted mb-2" style="font-size: 48px;">group</i>
+                            <h6>No students enrolled</h6>
+                            <p class="text-muted small mb-3">Share the class code with students</p>
+                            <button class="btn btn-outline-primary btn-sm" onclick="copyClassCode('{{ class_.class_code }}')">
+                                Copy Class Code
+                            </button>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Invite Students Modal -->
+<div class="modal fade" id="inviteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Invite Students</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Share this class code with your students:</p>
+                <div class="alert alert-info text-center">
+                    <h3 class="mb-0">{{ class_.class_code }}</h3>
+                </div>
+                <p class="small text-muted">Students can join by entering this code in the Unity game or mobile app.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="copyClassCode('{{ class_.class_code }}')">Copy Code</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyClassCode(code) {
+    navigator.clipboard.writeText(code).then(() => {
+        // Show success message
+        const toast = document.createElement('div');
+        toast.className = 'position-fixed top-0 end-0 p-3';
+        toast.style.zIndex = '9999';
+        toast.innerHTML = `
+            <div class="toast show" role="alert">
+                <div class="toast-header">
+                    <i class="material-icons text-success me-2">check_circle</i>
+                    <strong class="me-auto">Success</strong>
+                    <button type="button" class="btn-close" onclick="this.closest('.toast').remove()"></button>
+                </div>
+                <div class="toast-body">
+                    Class code copied to clipboard!
+                </div>
+            </div>
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    });
+}
+
+function inviteStudents() {
+    new bootstrap.Modal(document.getElementById('inviteModal')).show();
+}
+
+function deleteAssignment(assignmentId, assignmentTitle) {
+    if (confirm(`Are you sure you want to delete "${assignmentTitle}"? This action cannot be undone.`)) {
+        window.location.href = `/delete_assignment/${assignmentId}`;
+    }
+}
+
+// Auto-refresh completion rates every 30 seconds
+setInterval(() => {
+    location.reload();
+}, 30000);
+</script>
+{% endblock %} 

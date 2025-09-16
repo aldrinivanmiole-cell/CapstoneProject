@@ -1,0 +1,634 @@
+{% extends "base.html" %}
+{% block title %}Create assignment - {{ class_.name }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="row">
+    <div class="col-12">
+      <h1 class="h4 mb-4">Create assignment for {{ class_.name }}</h1>
+
+      <!-- assignment Templates Section -->
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title">Quick Start Templates</h5>
+          <p class="text-muted mb-3">Click on the question type to create an assignment with 10 questions of that type</p>
+          <div class="row g-3">
+      <div class="col-md-6 col-lg-3">
+        <button type="button" class="btn btn-outline-primary w-100 question-type-btn" data-type="multiple_choice" onclick="setQuestionType('multiple_choice')">
+          <span class="material-icons d-block mb-1">assignment</span>
+          Multiple Choice<br>
+          <small>10 Questions</small>
+        </button>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <button type="button" class="btn btn-outline-success w-100 question-type-btn" data-type="problem_solving" onclick="setQuestionType('problem_solving')">
+          <span class="material-icons d-block mb-1">calculate</span>
+          Problem Solving<br>
+          <small>10 Questions</small>
+          </button>
+        </div>
+      <div class="col-md-6 col-lg-3">
+        <button type="button" class="btn btn-outline-info w-100 question-type-btn" data-type="enumeration" onclick="setQuestionType('enumeration')">
+          <span class="material-icons d-block mb-1">list</span>
+          Enumeration<br>
+          <small>10 Questions</small>
+        </button>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <button type="button" class="btn btn-outline-warning w-100 question-type-btn" data-type="essay" onclick="setQuestionType('essay')">
+          <span class="material-icons d-block mb-1">edit</span>
+          Essay<br>
+          <small>10 Questions</small>
+        </button>
+      </div>
+    </div>
+    <div class="row g-3 mt-2">
+      <div class="col-md-6 col-lg-3">
+        <button type="button" class="btn btn-outline-info w-100 question-type-btn" data-type="identification" onclick="setQuestionType('identification')">
+          <span class="material-icons d-block mb-1">text_fields</span>
+          Identification<br>
+          <small>10 Questions</small>
+        </button>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <button type="button" class="btn btn-outline-purple w-100 question-type-btn" data-type="fill_in_the_blanks" onclick="setQuestionType('fill_in_the_blanks')">
+          <span class="material-icons d-block mb-1">format_color_fill</span>
+          Fill in the Blanks<br>
+          <small>10 Questions</small>
+        </button>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <button type="button" class="btn btn-outline-secondary w-100 question-type-btn" data-type="yes_no" onclick="setQuestionType('yes_no')">
+          <span class="material-icons d-block mb-1">help_outline</span>
+          Yes/No<br>
+          <small>10 Questions</small>
+        </button>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <button type="button" class="btn btn-outline-dark w-100" onclick="showCustomTemplate()">
+          <span class="material-icons d-block mb-1">settings</span>
+          Custom Template<br>
+          <small>Choose your own</small>
+        </button>
+      </div>
+    </div>
+  </div>
+      </div>
+
+<!-- Custom Template Modal -->
+<div class="modal fade" id="customTemplateModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Custom assignment Template</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Question Type</label>
+          <select class="form-select" id="customType">
+            <option value="multiple_choice">Multiple Choice</option>
+            <option value="yes_no">Yes/No</option>
+            <option value="identification">Identification</option>
+            <option value="fill_in_the_blanks">Fill in the Blanks</option>
+            <option value="problem_solving">Problem Solving</option>
+            <option value="enumeration">Enumeration</option>
+            <option value="essay">Essay</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Number of Questions</label>
+          <input type="number" class="form-control" id="customCount" min="1" max="50" value="5">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="createCustomTemplate()">Create Template</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<form id="assignmentForm" method="post">
+  <div class="mb-3">
+    <label class="form-label">assignment title</label>
+    <input type="text" class="form-control" name="title" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Description (optional)</label>
+    <textarea class="form-control" name="description" rows="2"></textarea>
+  </div>
+
+  <hr class="my-4">
+  <h2 class="h5 mb-3">Questions</h2>
+  <div id="questions-container" class="vstack gap-4"></div>
+
+  <input type="hidden" name="questions" id="questionsInput">
+  <button type="submit" class="btn btn-primary">Save assignment</button>
+  <a href="{{ url_for('index') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
+</form>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+.btn-outline-purple {
+  --bs-btn-color: #6f42c1;
+  --bs-btn-border-color: #6f42c1;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: #6f42c1;
+  --bs-btn-hover-border-color: #6f42c1;
+  --bs-btn-focus-shadow-rgb: 111, 66, 193;
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: #6f42c1;
+  --bs-btn-active-border-color: #6f42c1;
+  --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
+  --bs-btn-disabled-color: #6f42c1;
+  --bs-btn-disabled-bg: transparent;
+  --bs-btn-disabled-border-color: #6f42c1;
+  --bs-gradient: none;
+}
+.question-card {
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 16px;
+}
+.remove-question {
+  cursor: pointer;
+}
+.option-input {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.template-btn {
+  transition: all 0.2s;
+}
+.template-btn:hover {
+  transform: translateY(-2px);
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let questions = [];
+let qId = 0;
+
+const typeOptions = [
+  {value: 'multiple_choice', label: 'Multiple choice'},
+  {value: 'yes_no', label: 'Yes/No'},
+  {value: 'identification', label: 'Identification'},
+  {value: 'fill_in_the_blanks', label: 'Fill in the blanks'},
+  {value: 'enumeration', label: 'Enumeration'},
+  {value: 'problem_solving', label: 'Problem solving'},
+  {value: 'essay', label: 'Essay'}
+];
+
+function createTemplate(type, count) {
+  questions = []; // Clear existing questions
+  
+  // Create uniform assignment
+  for (let i = 0; i < count; i++) {
+    addQuestionOfType(type);
+  }
+  
+  renderQuestions();
+  
+  // Scroll to questions section
+  document.getElementById('questions-container').scrollIntoView({behavior: 'smooth'});
+}
+
+function addQuestionOfType(type) {
+  const question = {
+    id: ++qId, 
+    text: '', 
+    type: type, 
+    points: 1, 
+    help_video_url: '',
+    correct_answers: []
+  };
+  
+  if (type === 'multiple_choice') {
+    question.options = ['Option A', 'Option B', 'Option C', 'Option D'];
+    question.correct_answers = ['Option A'];
+  } else if (type === 'fill_in_the_blanks') {
+    question.correct_answers = ['answer1', 'answer2'];
+  }
+  
+  questions.push(question);
+}
+
+function showCustomTemplate() {
+  new bootstrap.Modal(document.getElementById('customTemplateModal')).show();
+}
+
+function createCustomTemplate() {
+  const type = document.getElementById('customType').value;
+  const count = parseInt(document.getElementById('customCount').value) || 5;
+  
+  createTemplate(type, count);
+  bootstrap.Modal.getInstance(document.getElementById('customTemplateModal')).hide();
+}
+
+function renderQuestions() {
+  const container = document.getElementById('questions-container');
+  container.innerHTML = '';
+  questions.forEach((q, index) => {
+    const card = document.createElement('div');
+    card.className = 'question-card';
+    card.innerHTML = `
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <h3 class="h6 mb-0">Question ${index + 1}</h3>
+        <span class="material-icons text-danger remove-question" data-id="${q.id}">delete</span>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Question text</label>
+        <textarea class="form-control question-text" rows="2">${q.text || ''}</textarea>
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-md-4">
+          <label class="form-label">Type</label>
+          <select class="form-select question-type">
+            ${typeOptions.map(t => `<option value="${t.value}" ${t.value===q.type?'selected':''}>${t.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Points</label>
+          <input type="number" min="1" class="form-control question-points" value="${q.points}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Help Video URL (optional)</label>
+          <input type="url" class="form-control help-video" value="${q.help_video_url || ''}" placeholder="YouTube URL">
+        </div>
+      </div>
+      <div class="question-extra"></div>
+    `;
+    container.appendChild(card);
+
+    // attach change listeners
+    card.querySelector('.remove-question').onclick = () => {
+      questions = questions.filter(qq => qq.id !== q.id);
+      renderQuestions();
+    };
+
+    const typeSelect = card.querySelector('.question-type');
+    const extraDiv = card.querySelector('.question-extra');
+
+    function renderExtra() {
+      extraDiv.innerHTML = '';
+      const qt = typeSelect.value;
+      if (qt === 'multiple_choice') {
+        extraDiv.innerHTML = `
+          <label class="form-label">Options</label>
+          <div class="options-container"></div>
+          <button type="button" class="btn btn-sm btn-outline-secondary add-option">Add option</button>`;
+        const optContainer = extraDiv.querySelector('.options-container');
+        q.options = q.options || [''];
+        function renderOpts() {
+          optContainer.innerHTML = '';
+          q.options.forEach((opt, oi) => {
+            const row = document.createElement('div');
+            row.className = 'option-input';
+            row.innerHTML = `
+              <input type="text" class="form-control option-text" value="${opt}" placeholder="Option ${oi + 1}">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="correct_${q.id}_${oi}" ${q.correct_answers.includes(opt) ? 'checked' : ''}>
+                <label class="form-check-label" for="correct_${q.id}_${oi}">Correct</label>
+              </div>
+              <span class="material-icons text-danger remove-opt" data-idx="${oi}">close</span>`;
+            optContainer.appendChild(row);
+            
+            row.querySelector('.remove-opt').onclick = () => { 
+              q.options.splice(oi,1); 
+              q.correct_answers = q.correct_answers.filter(ans => ans !== opt);
+              renderOpts(); 
+            };
+            
+            row.querySelector('.option-text').oninput = e => { 
+              const oldValue = q.options[oi];
+              q.options[oi] = e.target.value; 
+              // Update correct answers if this option was marked as correct
+              const correctIndex = q.correct_answers.indexOf(oldValue);
+              if (correctIndex !== -1) {
+                q.correct_answers[correctIndex] = e.target.value;
+              }
+            };
+            
+            row.querySelector('.form-check-input').onchange = e => {
+              if (e.target.checked) {
+                if (!q.correct_answers.includes(opt)) {
+                  q.correct_answers.push(opt);
+                }
+              } else {
+                q.correct_answers = q.correct_answers.filter(ans => ans !== opt);
+              }
+            };
+          });
+        }
+        renderOpts();
+        extraDiv.querySelector('.add-option').onclick = () => { q.options.push(''); renderOpts(); };
+      } else if (qt === 'identification') {
+        extraDiv.innerHTML = `
+          <label class="form-label">Correct answer</label>
+          <input type="text" class="form-control identification-answer" value="${q.correct_answer||''}" placeholder="Enter the correct answer">`;
+        extraDiv.querySelector('.identification-answer').oninput = e => { q.correct_answer = e.target.value; };
+      } else if (qt === 'fill_in_the_blanks') {
+        extraDiv.innerHTML = `
+          <div class="mb-3">
+            <label class="form-label">Question Text</label>
+            <small class="text-muted d-block mb-2">Type your question and use _____ for blanks</small>
+            <div class="alert alert-info p-2">
+              <strong>Example:</strong> The capital of _____ is _____.
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Answers for Blanks</label>
+            <div class="answers-list"></div>
+            <button type="button" class="btn btn-sm btn-success add-answer-btn">+ Add Answer</button>
+          </div>`;
+        
+        const answersList = extraDiv.querySelector('.answers-list');
+        
+        function renderAnswers() {
+          answersList.innerHTML = '';
+          q.correct_answers = q.correct_answers || [];
+          
+          q.correct_answers.forEach((answer, index) => {
+            answersList.innerHTML += `
+              <div class="d-flex gap-2 mb-2">
+                <span class="badge bg-primary">Blank ${index + 1}</span>
+                <input type="text" class="form-control answer-input" value="${answer}" placeholder="Answer ${index + 1}">
+                <button type="button" class="btn btn-sm btn-danger remove-btn" data-index="${index}">×</button>
+              </div>`;
+          });
+          
+          // Add event listeners
+          answersList.querySelectorAll('.answer-input').forEach((input, index) => {
+            input.oninput = () => q.correct_answers[index] = input.value;
+          });
+          
+          answersList.querySelectorAll('.remove-btn').forEach(btn => {
+            btn.onclick = () => {
+              q.correct_answers.splice(btn.dataset.index, 1);
+              renderAnswers();
+            };
+          });
+        }
+        
+        extraDiv.querySelector('.add-answer-btn').onclick = () => {
+          q.correct_answers.push('');
+          renderAnswers();
+        };
+        
+        renderAnswers();
+        
+      } else if (qt === 'enumeration') {
+        extraDiv.innerHTML = `
+          <div class="mb-3">
+            <label class="form-label">Enumeration Answers</label>
+            <div class="card">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <small class="text-muted">Add possible correct answers:</small>
+                  <button type="button" class="btn btn-sm btn-success add-enum-answer">
+                    <span class="material-icons">add</span> Add Answer
+                  </button>
+                </div>
+                <div class="enum-answers-list"></div>
+              </div>
+            </div>
+          </div>`;
+        
+        const answersList = extraDiv.querySelector('.enum-answers-list');
+        
+        function renderEnumAnswers() {
+          answersList.innerHTML = '';
+          q.correct_answers = q.correct_answers || [];
+          
+          if (q.correct_answers.length === 0) {
+            answersList.innerHTML = '<div class="text-center text-muted p-3">No answers added yet. Click "Add Answer" to start.</div>';
+            return;
+          }
+          
+          q.correct_answers.forEach((answer, index) => {
+            const answerDiv = document.createElement('div');
+            answerDiv.className = 'enum-answer-item d-flex align-items-center gap-2 mb-2';
+            answerDiv.innerHTML = `
+              <span class="badge bg-primary">${index + 1}</span>
+              <input type="text" class="form-control enum-answer-input" value="${answer}" placeholder="Enter answer option">
+              <button type="button" class="btn btn-sm btn-outline-danger remove-enum-answer">
+                <span class="material-icons">delete</span>
+              </button>`;
+            answersList.appendChild(answerDiv);
+            
+            // Event listeners
+            const input = answerDiv.querySelector('.enum-answer-input');
+            const removeBtn = answerDiv.querySelector('.remove-enum-answer');
+            
+            input.oninput = () => {
+              q.correct_answers[index] = input.value;
+            };
+            
+            removeBtn.onclick = () => {
+              q.correct_answers.splice(index, 1);
+              renderEnumAnswers();
+            };
+          });
+        }
+        
+        extraDiv.querySelector('.add-enum-answer').onclick = () => {
+          q.correct_answers = q.correct_answers || [];
+          q.correct_answers.push('');
+          renderEnumAnswers();
+          // Focus on the new input
+          setTimeout(() => {
+            const inputs = answersList.querySelectorAll('.enum-answer-input');
+            if (inputs.length > 0) {
+              inputs[inputs.length - 1].focus();
+            }
+          }, 100);
+        };
+        
+        renderEnumAnswers();
+      } else if (qt === 'problem_solving') {
+        extraDiv.innerHTML = `
+          <label class="form-label">Correct answer</label>
+          <input type="text" class="form-control ps-answer" value="${q.correct_answer||''}" placeholder="Enter the correct answer">`;
+        extraDiv.querySelector('.ps-answer').oninput = e => { q.correct_answer = e.target.value; };
+      } else if (qt === 'yes_no') {
+        // Yes/No questions automatically have Yes and No options
+        q.options = ['Yes', 'No'];
+        q.correct_answers = q.correct_answers || [];
+        
+        extraDiv.innerHTML = `
+          <div class="mb-3">
+            <label class="form-label">Correct Answer</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="yes_no_${q.id}" id="yes_${q.id}" value="Yes" ${q.correct_answers.includes('Yes') ? 'checked' : ''}>
+              <label class="form-check-label" for="yes_${q.id}">Yes</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="yes_no_${q.id}" id="no_${q.id}" value="No" ${q.correct_answers.includes('No') ? 'checked' : ''}>
+              <label class="form-check-label" for="no_${q.id}">No</label>
+            </div>
+          </div>`;
+        
+        extraDiv.querySelectorAll('input[type="radio"]').forEach(radio => {
+          radio.onchange = e => {
+            if (e.target.checked) {
+              q.correct_answers = [e.target.value];
+            }
+          };
+        });
+      }
+      // essay: nothing extra
+    }
+    
+    typeSelect.onchange = () => { q.type = typeSelect.value; renderExtra(); };
+    card.querySelector('.question-text').oninput = e => { q.text = e.target.value; };
+    card.querySelector('.question-points').oninput = e => { q.points = parseInt(e.target.value)||1; };
+    card.querySelector('.help-video').oninput = e => { q.help_video_url = e.target.value; };
+    renderExtra();
+  });
+}
+
+// Global variable to track the selected question type for this assignment
+let selectedQuestionType = null;
+
+// Function to set the question type for the entire assignment
+function setQuestionType(type) {
+  selectedQuestionType = type;
+  
+  // Add 10 questions of the selected type (template)
+  for (let i = 0; i < 10; i++) {
+    addQuestionOfType(type);
+  }
+  renderQuestions();
+  
+  // Update UI to show which type is selected
+  updateQuestionTypeUI(type);
+  
+  // Scroll to questions section
+  document.getElementById('questions-container').scrollIntoView({behavior: 'smooth'});
+}
+
+// Function to add another question of the same type
+function addAnotherQuestion() {
+  if (selectedQuestionType) {
+    addQuestionOfType(selectedQuestionType);
+    renderQuestions();
+  }
+}
+
+// Function to update the UI after a question type is selected
+function updateQuestionTypeUI(type) {
+  // Get all question type buttons
+  const buttons = document.querySelectorAll('.question-type-btn');
+  
+  // Disable all buttons except the selected one
+  buttons.forEach(btn => {
+    if (btn.dataset.type === type) {
+      // Make the selected button active and change text
+      btn.classList.remove('btn-outline-primary', 'btn-outline-success', 'btn-outline-info', 'btn-outline-warning', 'btn-outline-secondary', 'btn-outline-purple');
+      btn.classList.add('btn-success');
+      btn.innerHTML = btn.innerHTML.replace(/^[^<]*/, '✓ Selected: ');
+    } else {
+      // Disable other buttons
+      btn.disabled = true;
+      btn.classList.add('text-muted');
+    }
+  });
+  
+  // Show the "Add Another Question" button
+  showAddAnotherButton(type);
+}
+
+// Function to show the "Add Another Question" button
+function showAddAnotherButton(type) {
+  const typeNames = {
+    'multiple_choice': 'Multiple Choice',
+    'yes_no': 'Yes/No',
+    'identification': 'Identification',
+    'fill_in_the_blanks': 'Fill in the Blanks',
+    'enumeration': 'Enumeration',
+    'problem_solving': 'Problem Solving',
+    'essay': 'Essay'
+  };
+  
+  const container = document.querySelector('.card-body');
+  
+  // Remove existing add button if any
+  const existingBtn = document.getElementById('addAnotherBtn');
+  if (existingBtn) {
+    existingBtn.remove();
+  }
+  
+  // Add the "Add Another Question" button
+  const addBtn = document.createElement('div');
+  addBtn.id = 'addAnotherBtn';
+  addBtn.className = 'text-center mt-4';
+  addBtn.innerHTML = `
+    <button type="button" class="btn btn-primary btn-lg" onclick="addAnotherQuestion()">
+      <span class="material-icons align-middle">add</span> Add Another ${typeNames[type]} Question
+    </button>
+    <div class="mt-2">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetQuestionType()">
+        <span class="material-icons align-middle">refresh</span> Change Question Type
+      </button>
+    </div>
+  `;
+  
+  container.appendChild(addBtn);
+}
+
+// Function to reset and allow changing question type
+function resetQuestionType() {
+  selectedQuestionType = null;
+  questions = []; // Clear all questions
+  renderQuestions();
+  
+  // Reset all buttons to original state
+  const buttons = document.querySelectorAll('.question-type-btn');
+  buttons.forEach(btn => {
+    btn.disabled = false;
+    btn.classList.remove('btn-success', 'text-muted');
+    
+    // Restore original button classes and text
+    const type = btn.dataset.type;
+    btn.className = `btn w-100 question-type-btn btn-outline-${getButtonColor(type)}`;
+    btn.innerHTML = btn.innerHTML.replace(/✓ Selected: /, '');
+  });
+  
+  // Remove the "Add Another" button
+  const addBtn = document.getElementById('addAnotherBtn');
+  if (addBtn) {
+    addBtn.remove();
+  }
+}
+
+// Helper function to get button colors
+function getButtonColor(type) {
+  const colors = {
+    'multiple_choice': 'primary',
+    'problem_solving': 'success',
+    'enumeration': 'info',
+    'essay': 'warning',
+    'identification': 'info',
+    'fill_in_the_blanks': 'purple',
+    'yes_no': 'secondary'
+  };
+  return colors[type] || 'primary';
+}
+
+// Start with empty assignment
+renderQuestions();
+
+document.getElementById('assignmentForm').onsubmit = function(e){
+  // embed questions JSON
+  document.getElementById('questionsInput').value = JSON.stringify(questions);
+};
+</script>
+{% endblock %}

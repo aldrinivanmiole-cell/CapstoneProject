@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Create Account - Academic Dashboard{% endblock %}
+{% block content %}
+  <div class="text-center mb-4">
+    <h1 class="h3 mb-3 fw-normal">Create your Account</h1>
+    <p class="text-muted">Join Academic Dashboard to create and manage your classes</p>
+  </div>
+  
+  <form method="post" class="needs-validation" novalidate>
+    <div class="row g-3 mb-3">
+      <div class="col-sm-6">
+        <label for="first_name" class="form-label">First name</label>
+        <input type="text" class="form-control" id="first_name" name="first_name" required>
+      </div>
+      <div class="col-sm-6">
+        <label for="last_name" class="form-label">Last name</label>
+        <input type="text" class="form-control" id="last_name" name="last_name" required>
+      </div>
+    </div>
+    
+    <div class="mb-3">
+      <label for="email" class="form-label">Email address</label>
+      <input type="email" class="form-control" id="email" name="email" required>
+    </div>
+    
+    <div class="mb-3">
+      <label for="password" class="form-label">Password</label>
+      <input type="password" class="form-control" id="password" name="password" 
+             required minlength="8"
+             pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
+             title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters">
+      <div class="form-text">Use 8 or more characters with a mix of letters, numbers & symbols</div>
+    </div>
+    
+    <div class="mb-4">
+      <label for="confirm_password" class="form-label">Confirm password</label>
+      <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+    </div>
+    
+    <button class="w-100 btn btn-primary" type="submit">Create Account</button>
+    <p class="mt-4 mb-0 text-center">
+      Already have an account? <a href="{{ url_for('login') }}" class="text-decoration-none" style="color: #1a73e8;">Sign in</a>
+    </p>
+  </form>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+.form-control {
+  padding: 1rem 0.75rem;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  height: auto;
+}
+
+.form-control:focus {
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+}
+
+.form-label {
+  font-size: 0.875rem;
+  color: #5f6368;
+  margin-bottom: 0.5rem;
+}
+
+.form-text {
+  font-size: 0.75rem;
+  color: #5f6368;
+  margin-top: 0.5rem;
+}
+
+.btn-primary {
+  background-color: #1a73e8;
+  border-color: #1a73e8;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  border-radius: 4px;
+}
+
+.btn-primary:hover {
+  background-color: #1557b0;
+  border-color: #1557b0;
+}
+
+.alert {
+  border: none;
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  background-color: #fce8e6;
+  color: #d93025;
+}
+
+.alert::before {
+  content: 'error';
+  font-family: 'Material Icons';
+  margin-right: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.alert.alert-success {
+  background-color: #e6f4ea;
+  color: #1e8e3e;
+}
+
+.alert.alert-success::before {
+  content: 'check_circle';
+}
+
+.btn-close {
+  filter: none;
+  opacity: 0.87;
+  font-size: 0.75rem;
+}
+
+h1 {
+  color: #202124;
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.text-muted {
+  color: #5f6368 !important;
+  font-size: 0.875rem;
+}
+
+.was-validated .form-control:invalid {
+  border-color: #d93025;
+  background-image: none;
+}
+
+.was-validated .form-control:invalid:focus {
+  border-color: #d93025;
+  box-shadow: 0 0 0 2px rgba(217, 48, 37, 0.2);
+}
+
+.invalid-feedback {
+  color: #d93025;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+</style>
+
+<script>
+// Password validation
+const password = document.getElementById("password");
+const confirm_password = document.getElementById("confirm_password");
+
+function validatePassword() {
+  if (password.value !== confirm_password.value) {
+    confirm_password.setCustomValidity("Passwords do not match");
+  } else {
+    confirm_password.setCustomValidity("");
+  }
+}
+
+password.onchange = validatePassword;
+confirm_password.onkeyup = validatePassword;
+
+// Form validation
+(function () {
+  'use strict'
+  const forms = document.querySelectorAll('.needs-validation')
+  Array.from(forms).forEach(form => {
+    form.addEventListener('submit', event => {
+      if (!form.checkValidity()) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      form.classList.add('was-validated')
+    }, false)
+  })
+})()
+</script>
+{% endblock %}

@@ -1,0 +1,116 @@
+{% extends 'admin_base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2><i class="bi bi-person-plus"></i> Manage Enrollments</h2>
+  <div class="text-muted">Enroll students in classes and manage enrollments</div>
+</div>
+
+  <!-- Quick Actions Card -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <h5 class="mb-0"><i class="bi bi-plus-circle"></i> Enroll Student in Class</h5>
+    </div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('admin_create_enrollment') }}" class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label">Select Student</label>
+          <select class="form-select" name="student_id" required>
+            <option value="">Choose a student...</option>
+            {% for student in students %}
+            <option value="{{ student.id }}">{{ student.name }} ({{ student.email }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-5">
+          <label class="form-label">Select Class</label>
+          <select class="form-select" name="class_id" required>
+            <option value="">Choose a class...</option>
+            {% for class in classes %}
+            <option value="{{ class.id }}">{{ class.name }}{% if class.section %} - {{ class.section }}{% endif %} ({{ class.class_code }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button class="btn btn-primary w-100">
+            <i class="bi bi-person-plus"></i> Enroll
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card p-3">
+    <h5 class="mb-3">All Enrollments ({{ enrollments|length }})</h5>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Student Name</th>
+            <th>Email</th>
+            <th>Class</th>
+            <th>Teacher</th>
+            <th>Enrolled Date</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for enrollment in enrollments %}
+          <tr>
+            <td>{{ enrollment.student.name }}</td>
+            <td><code>{{ enrollment.student.email }}</code></td>
+            <td>
+              <div>{{ enrollment.class_.name }}</div>
+              {% if enrollment.class_.section %}
+              <div class="text-muted small">{{ enrollment.class_.section }}</div>
+              {% endif %}
+            </td>
+            <td>{{ enrollment.class_.teacher.full_name }}</td>
+            <td>{{ enrollment.enrolled_at.strftime('%Y-%m-%d') if enrollment.enrolled_at }}</td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm">
+                <a href="{{ url_for('admin_edit_enrollment', enrollment_id=enrollment.id) }}" class="btn btn-outline-primary">
+                  <i class="bi bi-pencil"></i> Edit
+                </a>
+                <form method="post" action="{{ url_for('admin_delete_enrollment', enrollment_id=enrollment.id) }}" style="display: inline;" onsubmit="return confirm('Remove this enrollment?');">
+                  <button class="btn btn-outline-danger">
+                    <i class="bi bi-trash"></i> Remove
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card p-3 mt-4">
+    <h5 class="mb-3">Enrollment Statistics</h5>
+    <div class="row">
+      <div class="col-md-3">
+        <div class="text-center">
+          <div class="h4">{{ enrollments|length }}</div>
+          <div class="text-muted">Total Enrollments</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-center">
+          <div class="h4">{{ students|length }}</div>
+          <div class="text-muted">Total Students</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-center">
+          <div class="h4">{{ classes|length }}</div>
+          <div class="text-muted">Active Classes</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-center">
+          <div class="h4">{{ (enrollments|length / classes|length)|round(1) if classes|length > 0 else 0 }}</div>
+          <div class="text-muted">Avg per Class</div>
+        </div>
+      </div>
+    </div>
+{% endblock %}

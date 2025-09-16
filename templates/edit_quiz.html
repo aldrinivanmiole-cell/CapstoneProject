@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Edit Quiz - {{ quiz.class_.name }}{% endblock %}
+{% block content %}
+<h1 class="h4 mb-4">Edit Quiz for {{ quiz.class_.name }}</h1>
+<form id="quizForm" method="post">
+  <div class="mb-3">
+    <label class="form-label">Quiz title</label>
+    <input type="text" class="form-control" name="title" value="{{ quiz.title }}" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Description (optional)</label>
+    <textarea class="form-control" name="description" rows="2">{{ quiz.description or '' }}</textarea>
+  </div>
+
+  <hr class="my-4">
+  <h2 class="h5 mb-3">Questions</h2>
+  <div id="questions-container" class="vstack gap-4"></div>
+  <button type="button" id="addQuestionBtn" class="btn btn-outline-primary mb-4">
+    <span class="material-icons align-middle">add</span> Add question
+  </button>
+
+  <input type="hidden" name="questions" id="questionsInput">
+  <button type="submit" class="btn btn-primary">Update Quiz</button>
+  <a href="{{ url_for('view_quiz', quiz_id=quiz.id) }}" class="btn btn-outline-secondary ms-2">Cancel</a>
+</form>
+{% endblock %}
+
+{% block extra_styles %}
+<style>
+.question-card {
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 16px;
+}
+.remove-question {
+  cursor: pointer;
+}
+.option-input {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let questions = {{ quiz_data|safe }};
+let qId = questions.length;
+
+const typeOptions = [
+  {value: 'multiple_choice', label: 'Multiple choice'},
+  {value: 'enumeration', label: 'Enumeration'},
+  {value: 'problem_solving', label: 'Problem solving'},
+  {value: 'essay', label: 'Essay'}
+];
+
+// Add IDs to existing questions for tracking
+questions.forEach((q, i) => {
+  q.id = i + 1;
+});
+
+function renderQuestions() {
+  const container = document.getElementById('questions-container');
+  container.innerHTML = '';
+  questions.forEach((q, index) => {
+    const card = document.createElement('div');
+    card.className = 'question-card';
+    card.innerHTML = `
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <h3 class="h6 mb-0">Question ${index + 1}</h3>
+        <span class="material-icons text-danger remove-question" data-id="${q.id}">delete</span>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Question text</label>
+        <textarea class="form-control question-text" rows="2">${q.text || ''}</textarea>
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <label class="form-label">Type</label>
+          <select class="form-select question-type">
+            ${typeOptions.map(t => `<option value="${t.value}" ${t.value===q.type?'selected':''}>${t.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Points</label>
+          <input type="number" min="1" class="form-control question-points" value="${q.points}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Help Video URL (optional)</label>
+          <input type="url" class="form-control help-video" value="${q.help_video_url || ''}" placeholder="YouTube URL">
+        </div>
+      </div>
+      <div class="question-extra"></div>
+    `;
+    container.appendChild(card);
+
+    // attach change listeners
+    card.querySelector('.remove-question').onclick = () => {
+      questions = questions.filter(qq => qq.id !== q.id);
+      renderQuestions();
+    };
+
+    const typeSelect = card.querySelector('.question-type');
+    const extraDiv = card.querySelector('.question-extra');
+
+    function renderExtra() {
+      extraDiv.innerHTML = '';
+      const qt = typeSelect.value;
+      if (qt === 'multiple_choice') {
+        extraDiv.innerHTML = `
+          <label class="form-label">Options</label>
+          <div class="options-container"></div>
+          <button type="button" class="btn btn-sm btn-outline-secondary add-option">Add option</button>`;
+        const optContainer = extraDiv.querySelector('.options-container');
+        q.options = q.options || [];
+        function renderOpts() {
+          optContainer.innerHTML = '';
+          q.options.forEach((opt, oi) => {
+            const row = document.createElement('div');
+            row.className = 'option-input';
+            row.innerHTML = `<input type="text" class="form-control option-text" value="${opt}">
+                             <span class="material-icons text-danger remove-opt" data-idx="${oi}">close</span>`;
+            optContainer.appendChild(row);
+            row.querySelector('.remove-opt').onclick = () => { q.options.splice(oi,1); renderOpts(); };
+            row.querySelector('.option-text').oninput = e => { q.options[oi] = e.target.value; };
+          });
+        }
+        renderOpts();
+        extraDiv.querySelector('.add-option').onclick = () => { q.options.push(''); renderOpts(); };
+      } else if (qt === 'enumeration') {
+        extraDiv.innerHTML = `
+          <label class="form-label">Correct answers (one per line)</label>
+          <textarea class="form-control enum-answers" rows="3">${(q.correct_answers||[]).join('\n')}</textarea>`;
+        extraDiv.querySelector('.enum-answers').oninput = e => { q.correct_answers = e.target.value.split('\n').filter(Boolean); };
+      } else if (qt === 'problem_solving') {
+        extraDiv.innerHTML = `
+          <label class="form-label">Correct answer</label>
+          <input type="text" class="form-control ps-answer" value="${q.correct_answer||''}">`;
+        extraDiv.querySelector('.ps-answer').oninput = e => { q.correct_answer = e.target.value; };
+      }
+      // essay: nothing extra
+    }
+    typeSelect.onchange = () => { q.type = typeSelect.value; renderExtra(); };
+    card.querySelector('.question-text').oninput = e => { q.text = e.target.value; };
+    card.querySelector('.question-points').oninput = e => { q.points = parseInt(e.target.value)||1; };
+    renderExtra();
+  });
+}
+
+document.getElementById('addQuestionBtn').onclick = () => {
+  questions.push({id: ++qId, text:'', type:'multiple_choice', points:1, options:[''], correct_answers:[]});
+  renderQuestions();
+};
+
+// Render existing questions
+renderQuestions();
+
+document.getElementById('quizForm').onsubmit = function(e){
+  // embed questions JSON
+  document.getElementById('questionsInput').value = JSON.stringify(questions);
+};
+</script>
+{% endblock %}

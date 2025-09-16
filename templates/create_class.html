@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Create Class - Classroom{% endblock %}
+{% block content %}
+<div class="container-fluid py-4" style="max-width: 600px;">
+  <div class="text-center mb-4">
+    <h1 class="h3 mb-2">Create Class</h1>
+    <p class="text-muted">Create a new class for your students</p>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-4">
+      <form method="post" class="needs-validation" novalidate>
+        <div class="mb-4">
+          <label for="name" class="form-label">Class name (subject) <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="name" name="name" required 
+                 placeholder="e.g., Mathematics, English Literature, Physics">
+          <div class="form-text">This will be displayed as your class subject</div>
+        </div>
+        
+        <div class="mb-4">
+          <label for="section" class="form-label">Section</label>
+          <input type="text" class="form-control" id="section" name="section" 
+                 placeholder="e.g., A, B, Grade 10, Morning">
+          <div class="form-text">Optional: Specify the class section or group</div>
+        </div>
+        
+        <div class="d-flex gap-3">
+          <button type="submit" class="btn btn-primary flex-grow-1">
+            <i class="material-icons me-2">add</i>
+            Create Class
+          </button>
+          <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Form validation
+(function() {
+  'use strict';
+  window.addEventListener('load', function() {
+    var forms = document.getElementsByClassName('needs-validation');
+    var validation = Array.prototype.filter.call(forms, function(form) {
+      form.addEventListener('submit', function(event) {
+        if (form.checkValidity() === false) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        form.classList.add('was-validated');
+      }, false);
+    });
+  }, false);
+})();
+</script>
+{% endblock %}

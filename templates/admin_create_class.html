@@ -1,0 +1,34 @@
+{% extends 'admin_base.html' %}
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>Create Class</h3>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin_classes') }}">Back</a>
+  </div>
+
+  <div class="card p-3">
+    <form method="post" class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Class Name</label>
+        <input class="form-control" name="name" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Section (optional)</label>
+        <input class="form-control" name="section">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Teacher</label>
+        <select class="form-select" name="teacher_id" required>
+          <option value="">Select a teacher...</option>
+          {% for t in teachers %}
+          <option value="{{ t.id }}">{{ t.first_name }} {{ t.last_name }} ({{ t.email }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 d-flex justify-content-end">
+        <button class="btn btn-primary">Create Class</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
