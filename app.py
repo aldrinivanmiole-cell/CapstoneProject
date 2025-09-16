@@ -1968,17 +1968,27 @@ def admin_login():
     if request.method == "POST":
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "").strip()
-        db = SessionLocal()
-        try:
-            admin = db.query(Admin).filter_by(email=email).first()
-            if not admin or not admin.check_password(password):
-                error = "Invalid email or password"
-            else:
-                session["admin_id"] = admin.id
-                flash("Welcome, Admin!", "success")
-                return redirect(url_for("admin_dashboard"))
-        finally:
-            db.close()
+        
+        if not email or not password:
+            error = "Email and password are required"
+        else:
+            db = SessionLocal()
+            try:
+                admin = db.query(Admin).filter_by(email=email).first()
+                if not admin:
+                    error = "Invalid email or password"
+                elif not admin.check_password(password):
+                    error = "Invalid email or password"
+                else:
+                    session["admin_id"] = admin.id
+                    session["admin_email"] = admin.email
+                    flash("Welcome, Admin!", "success")
+                    return redirect(url_for("admin_dashboard"))
+            except Exception as e:
+                print(f"Admin login error: {str(e)}")
+                error = "Login failed. Please try again."
+            finally:
+                db.close()
     return render_template("admin_login.html", error=error)
 
 @app.route("/admin/logout")
@@ -1997,7 +2007,14 @@ def admin_dashboard():
         student_count = db.query(Student).count()
         class_count = db.query(Class).filter_by(is_archived=False).count()
         enrollment_count = db.query(Enrollment).count()
-        classes = db.query(Class).options(joinedload(Class.teacher)).filter_by(is_archived=False).order_by(Class.id.desc()).limit(10).all()
+        
+        # Get recent classes with proper error handling
+        try:
+            classes = db.query(Class).options(joinedload(Class.teacher)).filter_by(is_archived=False).order_by(Class.id.desc()).limit(10).all()
+        except Exception as class_error:
+            print(f"Error loading classes: {class_error}")
+            classes = []
+        
         return render_template("admin_dashboard.html", 
                                teacher_count=teacher_count, 
                                student_count=student_count,
@@ -2005,7 +2022,8 @@ def admin_dashboard():
                                enrollment_count=enrollment_count,
                                classes=classes)
     except Exception as e:
-        flash(f"Error loading dashboard: {str(e)}", "danger")
+        print(f"Admin dashboard error: {str(e)}")
+        db.rollback()
         return render_template("admin_dashboard.html", 
                                teacher_count=0, 
                                student_count=0,
