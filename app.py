@@ -117,7 +117,6 @@ class Assignment(Base):
     id = Column(Integer, primary_key=True)
     class_id = Column(Integer, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(255), nullable=False)
-    description = Column(Text)
     due_date = Column(DateTime)
     points = Column(Integer, default=100)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -1996,15 +1995,23 @@ def admin_dashboard():
     try:
         teacher_count = db.query(Teacher).count()
         student_count = db.query(Student).count()
-        class_count = db.query(Class).count()
+        class_count = db.query(Class).filter_by(is_archived=False).count()
         enrollment_count = db.query(Enrollment).count()
-        classes = db.query(Class).filter_by(is_archived=False).order_by(Class.created_at.desc()).limit(10).all()
+        classes = db.query(Class).options(joinedload(Class.teacher)).filter_by(is_archived=False).order_by(Class.id.desc()).limit(10).all()
         return render_template("admin_dashboard.html", 
                                teacher_count=teacher_count, 
                                student_count=student_count,
                                class_count=class_count,
                                enrollment_count=enrollment_count,
                                classes=classes)
+    except Exception as e:
+        flash(f"Error loading dashboard: {str(e)}", "danger")
+        return render_template("admin_dashboard.html", 
+                               teacher_count=0, 
+                               student_count=0,
+                               class_count=0,
+                               enrollment_count=0,
+                               classes=[])
     finally:
         db.close()
 
@@ -2047,26 +2054,28 @@ def admin_students():
     try:
         error = None
         if request.method == "POST":
-            student_id = request.form.get("student_id", "").strip()
-            first_name = request.form.get("first_name", "").strip()
-            last_name = request.form.get("last_name", "").strip()
-            gender = request.form.get("gender", "").strip()
-            if not all([student_id, first_name, last_name]):
-                error = "Student ID, first name, and last name are required"
-            elif db.query(Student).filter_by(student_id=student_id).first():
-                error = "Student ID already exists"
+            # Align with current Student model fields
+            name = request.form.get("name", "").strip()
+            email = request.form.get("email", "").strip()
+            grade_level = request.form.get("grade_level", "").strip()
+
+            if not name or not email:
+                error = "Name and email are required"
+            elif db.query(Student).filter_by(email=email).first():
+                error = "Email already exists"
             else:
                 student = Student(
-                    student_id=student_id,
-                    first_name=first_name,
-                    last_name=last_name,
-                    gender=gender if gender else None
+                    name=name,
+                    email=email,
+                    grade_level=grade_level if grade_level else None,
+                    total_points=0,
+                    last_active=datetime.utcnow()
                 )
                 db.add(student)
                 db.commit()
                 flash("Student created successfully", "success")
                 return redirect(url_for("admin_students"))
-        
+
         students = db.query(Student).order_by(Student.created_at.desc()).all()
         return render_template("admin_students.html", students=students, error=error)
     finally:
@@ -2085,24 +2094,24 @@ def admin_edit_student(student_id):
         
         error = None
         if request.method == "POST":
-            new_student_id = request.form.get("student_id", "").strip()
-            first_name = request.form.get("first_name", "").strip()
-            last_name = request.form.get("last_name", "").strip()
-            gender = request.form.get("gender", "").strip()
-            
-            if not all([new_student_id, first_name, last_name]):
-                error = "Student ID, first name, and last name are required"
-            elif new_student_id != student.student_id and db.query(Student).filter_by(student_id=new_student_id).first():
-                error = "Student ID already exists"
+            name = request.form.get("name", "").strip()
+            email = request.form.get("email", "").strip()
+            grade_level = request.form.get("grade_level", "").strip()
+            avatar_url = request.form.get("avatar_url", "").strip()
+
+            if not name or not email:
+                error = "Name and email are required"
+            elif email != student.email and db.query(Student).filter_by(email=email).first():
+                error = "Email already in use by another student"
             else:
-                student.student_id = new_student_id
-                student.first_name = first_name
-                student.last_name = last_name
-                student.gender = gender if gender else None
+                student.name = name
+                student.email = email
+                student.grade_level = grade_level if grade_level else None
+                student.avatar_url = avatar_url if avatar_url else None
                 db.commit()
                 flash("Student updated successfully", "success")
                 return redirect(url_for("admin_students"))
-        
+
         return render_template("admin_edit_student.html", student=student, error=error)
     finally:
         db.close()

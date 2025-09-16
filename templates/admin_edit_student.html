@@ -13,25 +13,20 @@
   <div class="card p-3">
     <form method="post" class="row g-3">
       <div class="col-md-6">
-        <label class="form-label">Student ID</label>
-        <input class="form-control" name="student_id" value="{{ student.student_id }}" required>
+        <label class="form-label">Full Name</label>
+        <input class="form-control" name="name" value="{{ student.name }}" required>
       </div>
       <div class="col-md-6">
-        <label class="form-label">Gender</label>
-        <select class="form-control" name="gender">
-          <option value="">Select gender (optional)</option>
-          <option value="Male" {{ 'selected' if student.gender == 'Male' else '' }}>Male</option>
-          <option value="Female" {{ 'selected' if student.gender == 'Female' else '' }}>Female</option>
-          <option value="Other" {{ 'selected' if student.gender == 'Other' else '' }}>Other</option>
-        </select>
+        <label class="form-label">Email</label>
+        <input class="form-control" type="email" name="email" value="{{ student.email }}" required>
       </div>
       <div class="col-md-6">
-        <label class="form-label">First Name</label>
-        <input class="form-control" name="first_name" value="{{ student.first_name }}" required>
+        <label class="form-label">Grade Level</label>
+        <input class="form-control" name="grade_level" value="{{ student.grade_level or '' }}">
       </div>
       <div class="col-md-6">
-        <label class="form-label">Last Name</label>
-        <input class="form-control" name="last_name" value="{{ student.last_name }}" required>
+        <label class="form-label">Avatar URL</label>
+        <input class="form-control" name="avatar_url" value="{{ student.avatar_url or '' }}">
       </div>
       
       <div class="col-12">
@@ -62,7 +57,7 @@
             <td>{{ enrollment.class_.name }}</td>
             <td>{{ enrollment.class_.section or 'N/A' }}</td>
             <td>{{ enrollment.class_.teacher.full_name }}</td>
-            <td>{{ enrollment.created_at.strftime('%Y-%m-%d') if enrollment.created_at }}</td>
+            <td>{{ enrollment.enrolled_at.strftime('%Y-%m-%d') if enrollment.enrolled_at }}</td>
           </tr>
           {% endfor %}
         </tbody>
