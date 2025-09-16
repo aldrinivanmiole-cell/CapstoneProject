@@ -467,7 +467,6 @@ def get_assignments_by_code(db, class_code: str):
                 {
                     "id": q.id,
                     "title": q.title,
-                    "description": q.description,
                     "points": q.points,
                     "question_count": len(q.questions)
                 } for q in assignments
@@ -537,7 +536,6 @@ def get_assignment_for_game(assignment_id: int):
             "assignment": {
                 "id": assignment.id,
                 "title": assignment.title,
-                "description": assignment.description,
                 "total_points": sum(q.points for q in questions),
                 "question_count": len(questions)
             },
@@ -1238,9 +1236,6 @@ def get_student_assignments_by_subject(request_data: dict):
                 "id": assignment.id,  # duplicate for Unity
                 "title": assignment.title,
                 "assignment_title": assignment.title,  # Unity-friendly duplicate
-                "description": assignment.description,
-                "content": assignment.description,  # Unity-friendly duplicate
-                "assignment_content": assignment.description,  # Unity-friendly duplicate
                 "assignment_type": gameplay_type,
                 "type": gameplay_type,
                 "due_date": assignment.due_date.isoformat() if assignment.due_date else None,
@@ -2379,7 +2374,7 @@ def create_assignment(class_id):
         if request.method == "POST":
             print("Processing POST request for assignment creation")
             title = request.form.get("title", "").strip()
-            description = request.form.get("description", "").strip()
+            # description removed
             questions_json = request.form.get("questions", "[]")
             
             print(f"Assignment title: {title}")
@@ -2398,7 +2393,7 @@ def create_assignment(class_id):
                 flash("Invalid questions data", "danger")
                 return render_template("create_assignment.html", class_=class_)
 
-            assignment = Assignment(class_id=class_id, title=title, description=description)
+            assignment = Assignment(class_id=class_id, title=title)
             db.add(assignment)
             db.flush()  # get assignment.id
             print(f"Created assignment with ID: {assignment.id}")
@@ -2541,7 +2536,7 @@ def edit_assignment(assignment_id):
         
         if request.method == "POST":
             title = request.form.get("title", "").strip()
-            description = request.form.get("description", "").strip()
+            # description removed
             questions_json = request.form.get("questions", "[]")
             
             if not title:
@@ -2556,7 +2551,7 @@ def edit_assignment(assignment_id):
             
             # Update quiz details
             assignment.title = title
-            assignment.description = description
+            # description removed
             
             # Delete existing questions and rebuild
             db.query(Question).filter_by(assignment_id=assignment.id).delete()

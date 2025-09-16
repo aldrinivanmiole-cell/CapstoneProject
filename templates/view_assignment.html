@@ -5,9 +5,7 @@
   <div class="text-center mb-4">
     <h1 class="h3 mb-2">{{ assignment.title }}</h1>
     <p class="text-muted mb-0">{{ assignment.class_.name }} • {{ questions|length }} question{{ 's' if questions|length != 1 else '' }}</p>
-    {% if assignment.description %}
-    <div class="alert alert-info mt-3">{{ assignment.description }}</div>
-    {% endif %}
+    
   </div>
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
