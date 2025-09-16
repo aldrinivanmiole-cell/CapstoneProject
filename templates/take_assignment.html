@@ -56,8 +56,59 @@
                      placeholder="Enter your answer" required>
               <div class="form-text">Provide the correct identification or term</div>
             </div>
-            
-          
+
+          {% elif question.question_type == 'fill_in_the_blanks' %}
+            <div class="mb-3">
+              <label class="form-label">Fill in the blanks:</label>
+              <div class="fill-in-blanks-container">
+                <div class="question-display mb-3 p-3 bg-light rounded" id="question-display-{{ question.id }}">
+                  {{ question.question_text }}
+                </div>
+                <input type="hidden" name="question_{{ question.id }}" id="hidden-answer-{{ question.id }}">
+                <div class="form-text">Fill in each blank field above. Your answers will be automatically combined.</div>
+              </div>
+              <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                  const questionDisplay = document.getElementById('question-display-{{ question.id }}');
+                  const hiddenInput = document.getElementById('hidden-answer-{{ question.id }}');
+                  let questionText = questionDisplay.textContent;
+                  
+                  // Replace _____ with input fields
+                  let blankCount = 0;
+                  questionText = questionText.replace(/_____/g, function() {
+                    blankCount++;
+                    return `<input type="text" class="form-control d-inline-block blank-input" style="width: 150px; margin: 0 5px;" placeholder="Answer ${blankCount}" data-blank="${blankCount}">`;
+                  });
+                  
+                  questionDisplay.innerHTML = questionText;
+                  
+                  // Update hidden field when any blank is filled
+                  function updateHiddenField() {
+                    const blankInputs = questionDisplay.querySelectorAll('.blank-input');
+                    const answers = Array.from(blankInputs).map(input => input.value);
+                    hiddenInput.value = answers.join('|');
+                  }
+                  
+                  // Add event listeners to all blank inputs
+                  questionDisplay.addEventListener('input', function(e) {
+                    if (e.target.classList.contains('blank-input')) {
+                      updateHiddenField();
+                    }
+                  });
+                });
+              </script>
+            </div>
+
+          {% elif question.question_type == 'yes_no' %}
+            {% for option in question.options %}
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="radio" name="question_{{ question.id }}" 
+                     id="q{{ question.id }}_{{ loop.index }}" value="{{ option.option_text }}" required>
+              <label class="form-check-label" for="q{{ question.id }}_{{ loop.index }}">
+                {{ option.option_text }}
+              </label>
+            </div>
+            {% endfor %}
             
           {% elif question.question_type == 'enumeration' %}
             <div class="mb-3">

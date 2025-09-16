@@ -2405,7 +2405,7 @@ def create_assignment(class_id):
                 points = int(q.get("points", 1))
                 help_video_url = q.get("help_video_url", "").strip()
 
-                if not q_text or q_type not in ["multiple_choice", "identification", "enumeration", "problem_solving", "essay"]:
+                if not q_text or q_type not in ["multiple_choice", "identification", "enumeration", "problem_solving", "essay", "fill_in_the_blanks", "yes_no"]:
                     print(f"Skipping invalid question {i+1}: type={q_type}, text='{q_text}'")
                     continue  # skip invalid question
 
@@ -2458,6 +2458,31 @@ def create_assignment(class_id):
                     print(f"Problem solving - correct: {correct}")
                     if correct.strip():
                         db.add(CorrectAnswer(question_id=question.id, answer_text=correct.strip()))
+
+                elif q_type == "fill_in_the_blanks":
+                    correct_answers = q.get("correct_answers", [])
+                    print(f"Fill in the blanks - correct answers: {correct_answers}")
+                    for ans in correct_answers:
+                        if ans.strip():  # Only add non-empty answers
+                            db.add(CorrectAnswer(question_id=question.id, answer_text=ans.strip()))
+
+                elif q_type == "yes_no":
+                    # Yes/No questions have options ["Yes", "No"] and one correct answer
+                    options = q.get("options", ["Yes", "No"])
+                    correct_answer = q.get("correct_answer", "")
+                    if not correct_answer:
+                        correct_answers = q.get("correct_answers", [])
+                        correct_answer = correct_answers[0] if correct_answers else ""
+                    print(f"Yes/No - options: {options}, correct: {correct_answer}")
+                    
+                    # Add Yes/No options
+                    for opt in options:
+                        if opt.strip():
+                            db.add(QuestionOption(question_id=question.id, option_text=opt.strip()))
+                    
+                    # Add correct answer
+                    if correct_answer.strip():
+                        db.add(CorrectAnswer(question_id=question.id, answer_text=correct_answer.strip()))
 
                 # essay: no correct answer
 
@@ -2564,7 +2589,7 @@ def edit_assignment(assignment_id):
                 points = int(q.get("points", 1))
                 help_video_url = q.get("help_video_url", "").strip()
                 
-                if not q_text or q_type not in ["multiple_choice", "enumeration", "problem_solving", "essay"]:
+                if not q_text or q_type not in ["multiple_choice", "identification", "enumeration", "problem_solving", "essay", "fill_in_the_blanks", "yes_no"]:
                     continue
                 
                 question = Question(
