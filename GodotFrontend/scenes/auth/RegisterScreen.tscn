@@ -16,23 +16,35 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.15, 0.2, 0.3, 1)
+color = Color(0.2, 0.5, 0.8, 1)
 
-[node name="Panel" type="Panel" parent="."]
+[node name="WoodenFrame" type="Panel" parent="."]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -300.0
-offset_top = -450.0
-offset_right = 300.0
-offset_bottom = 450.0
+offset_left = -320.0
+offset_top = -500.0
+offset_right = 320.0
+offset_bottom = 500.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="VBox" type="VBoxContainer" parent="Panel"]
+[node name="Panel" type="Panel" parent="WoodenFrame"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="WoodenFrame/Panel"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -43,78 +55,78 @@ offset_right = -30.0
 offset_bottom = -30.0
 theme_override_constants/separation = 15
 
-[node name="Title" type="Label" parent="Panel/VBox"]
+[node name="Title" type="Label" parent="WoodenFrame/Panel/VBox"]
 layout_mode = 2
-text = "Create Account"
+text = "CREATE ACCOUNT"
 horizontal_alignment = 1
 
-[node name="NameLabel" type="Label" parent="Panel/VBox"]
+[node name="NameLabel" type="Label" parent="WoodenFrame/Panel/VBox"]
 layout_mode = 2
 text = "Full Name:"
 
-[node name="NameInput" type="LineEdit" parent="Panel/VBox"]
+[node name="NameInput" type="LineEdit" parent="WoodenFrame/Panel/VBox"]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
-placeholder_text = "John Doe"
+placeholder_text = "FIRSTNAME LASTNAME..."
 
-[node name="EmailLabel" type="Label" parent="Panel/VBox"]
+[node name="EmailLabel" type="Label" parent="WoodenFrame/Panel/VBox"]
 layout_mode = 2
 text = "Email:"
 
-[node name="EmailInput" type="LineEdit" parent="Panel/VBox"]
+[node name="EmailInput" type="LineEdit" parent="WoodenFrame/Panel/VBox"]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
-placeholder_text = "student@school.com"
+placeholder_text = "EMAIL..."
 
-[node name="PasswordLabel" type="Label" parent="Panel/VBox"]
+[node name="PasswordLabel" type="Label" parent="WoodenFrame/Panel/VBox"]
 layout_mode = 2
 text = "Password:"
 
-[node name="PasswordInput" type="LineEdit" parent="Panel/VBox"]
+[node name="PasswordInput" type="LineEdit" parent="WoodenFrame/Panel/VBox"]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 secret = true
-placeholder_text = "At least 6 characters"
+placeholder_text = "PASSWORD..."
 
-[node name="ConfirmPasswordLabel" type="Label" parent="Panel/VBox"]
+[node name="ConfirmPasswordLabel" type="Label" parent="WoodenFrame/Panel/VBox"]
 layout_mode = 2
 text = "Confirm Password:"
 
-[node name="ConfirmPasswordInput" type="LineEdit" parent="Panel/VBox"]
+[node name="ConfirmPasswordInput" type="LineEdit" parent="WoodenFrame/Panel/VBox"]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 secret = true
-placeholder_text = "Re-enter password"
+placeholder_text = "CONFIRM PASSWORD..."
 
-[node name="GradeLabel" type="Label" parent="Panel/VBox"]
+[node name="GradeLabel" type="Label" parent="WoodenFrame/Panel/VBox"]
 layout_mode = 2
 text = "Grade Level:"
 
-[node name="GradeOption" type="OptionButton" parent="Panel/VBox"]
+[node name="GradeOption" type="OptionButton" parent="WoodenFrame/Panel/VBox"]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 
-[node name="Spacer" type="Control" parent="Panel/VBox"]
+[node name="Spacer" type="Control" parent="WoodenFrame/Panel/VBox"]
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 
-[node name="RegisterButton" type="Button" parent="Panel/VBox"]
+[node name="RegisterButton" type="Button" parent="WoodenFrame/Panel/VBox"]
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
-text = "Register"
+text = "REGISTER"
 
-[node name="BackButton" type="Button" parent="Panel/VBox"]
+[node name="BackButton" type="Button" parent="WoodenFrame/Panel/VBox"]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 text = "Back to Login"
 
-[node name="MessageLabel" type="Label" parent="Panel/VBox"]
+[node name="MessageLabel" type="Label" parent="WoodenFrame/Panel/VBox"]
 layout_mode = 2
 text = ""
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="LoadingIndicator" type="Label" parent="Panel/VBox"]
+[node name="LoadingIndicator" type="Label" parent="WoodenFrame/Panel/VBox"]
 layout_mode = 2
 text = "⏳ Creating account..."
 horizontal_alignment = 1

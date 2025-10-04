@@ -1,15 +1,15 @@
 extends Control
 # RegisterController.gd - Controls the registration screen
 
-@onready var name_input = $Panel/VBox/NameInput
-@onready var email_input = $Panel/VBox/EmailInput
-@onready var password_input = $Panel/VBox/PasswordInput
-@onready var confirm_password_input = $Panel/VBox/ConfirmPasswordInput
-@onready var grade_option = $Panel/VBox/GradeOption
-@onready var register_button = $Panel/VBox/RegisterButton
-@onready var back_button = $Panel/VBox/BackButton
-@onready var message_label = $Panel/VBox/MessageLabel
-@onready var loading_indicator = $Panel/VBox/LoadingIndicator
+@onready var name_input = $WoodenFrame/Panel/VBox/NameInput
+@onready var email_input = $WoodenFrame/Panel/VBox/EmailInput
+@onready var password_input = $WoodenFrame/Panel/VBox/PasswordInput
+@onready var confirm_password_input = $WoodenFrame/Panel/VBox/ConfirmPasswordInput
+@onready var grade_option = $WoodenFrame/Panel/VBox/GradeOption
+@onready var register_button = $WoodenFrame/Panel/VBox/RegisterButton
+@onready var back_button = $WoodenFrame/Panel/VBox/BackButton
+@onready var message_label = $WoodenFrame/Panel/VBox/MessageLabel
+@onready var loading_indicator = $WoodenFrame/Panel/VBox/LoadingIndicator
 
 var is_processing = false
 
