@@ -1,12 +1,12 @@
 extends Control
 # LoginController.gd - Controls the login screen
 
-@onready var email_input = $Panel/VBox/EmailInput
-@onready var password_input = $Panel/VBox/PasswordInput
-@onready var login_button = $Panel/VBox/LoginButton
-@onready var register_button = $Panel/VBox/RegisterButton
-@onready var message_label = $Panel/VBox/MessageLabel
-@onready var loading_indicator = $Panel/VBox/LoadingIndicator
+@onready var email_input = $WoodenFrame/Panel/VBox/EmailInput
+@onready var password_input = $WoodenFrame/Panel/VBox/PasswordInput
+@onready var login_button = $WoodenFrame/Panel/VBox/LoginButton
+@onready var register_button = $WoodenFrame/Panel/VBox/RegisterButton
+@onready var message_label = $WoodenFrame/Panel/VBox/MessageLabel
+@onready var loading_indicator = $WoodenFrame/Panel/VBox/LoadingIndicator
 
 var is_processing = false
 
