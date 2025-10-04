@@ -1,0 +1,105 @@
+[gd_scene load_steps=2 format=3 uid="uid://b9012345678"]
+
+[ext_resource type="Script" path="res://scripts/ui/ProfileController.gd" id="1"]
+
+[node name="Profile" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.2, 0.25, 0.35, 1)
+
+[node name="Panel" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = 40.0
+offset_right = -40.0
+offset_bottom = -40.0
+
+[node name="VBox" type="VBoxContainer" parent="Panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 30.0
+offset_top = 30.0
+offset_right = -30.0
+offset_bottom = -30.0
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="Panel/VBox"]
+layout_mode = 2
+text = "👤 My Profile"
+horizontal_alignment = 1
+
+[node name="ProfileSection" type="PanelContainer" parent="Panel/VBox"]
+layout_mode = 2
+
+[node name="ProfileVBox" type="VBoxContainer" parent="Panel/VBox/ProfileSection"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="NameLabel" type="Label" parent="Panel/VBox/ProfileSection/ProfileVBox"]
+layout_mode = 2
+text = "Name: Student Name"
+
+[node name="EmailLabel" type="Label" parent="Panel/VBox/ProfileSection/ProfileVBox"]
+layout_mode = 2
+text = "Email: student@school.com"
+
+[node name="GradeLabel" type="Label" parent="Panel/VBox/ProfileSection/ProfileVBox"]
+layout_mode = 2
+text = "Grade: Grade 5"
+
+[node name="PointsLabel" type="Label" parent="Panel/VBox/ProfileSection/ProfileVBox"]
+layout_mode = 2
+text = "Total Points: 0"
+
+[node name="ClassesLabel" type="Label" parent="Panel/VBox"]
+layout_mode = 2
+text = "Enrolled Classes:"
+
+[node name="ClassesSection" type="PanelContainer" parent="Panel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ScrollContainer" type="ScrollContainer" parent="Panel/VBox/ClassesSection"]
+layout_mode = 2
+
+[node name="ClassesList" type="VBoxContainer" parent="Panel/VBox/ClassesSection/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="JoinClassButton" type="Button" parent="Panel/VBox"]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+text = "➕ Join New Class"
+
+[node name="RefreshButton" type="Button" parent="Panel/VBox"]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+text = "🔄 Refresh Profile"
+
+[node name="LoadingLabel" type="Label" parent="Panel/VBox"]
+layout_mode = 2
+text = ""
+horizontal_alignment = 1
+
+[node name="BackButton" type="Button" parent="Panel/VBox"]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+text = "Back to Menu"
