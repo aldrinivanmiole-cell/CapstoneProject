@@ -4042,6 +4042,65 @@ def assignment_results(assignment_id):
     finally:
         db.close()
 
+@app.route("/view_essay_submissions/<int:assignment_id>")
+def view_essay_submissions(assignment_id):
+    """View all essay submissions for an assignment from StudentHistory"""
+    if "teacher_id" not in session:
+        return redirect(url_for("login"))
+    
+    db = SessionLocal()
+    try:
+        assignment = db.query(Assignment).filter_by(id=assignment_id).first()
+        if not assignment or assignment.class_.teacher_id != session["teacher_id"]:
+            flash("Assignment not found", "danger")
+            return redirect(url_for("index"))
+        
+        # Get all essay submissions from StudentHistory for this assignment
+        essay_submissions = db.query(StudentHistory).filter_by(
+            assignment_id=assignment_id
+        ).order_by(StudentHistory.submitted_at.desc()).all()
+        
+        # Add student information
+        for submission in essay_submissions:
+            submission.student = db.query(Student).filter_by(id=submission.student_id).first()
+        
+        return render_template("view_essay_submissions.html", 
+                             assignment=assignment, 
+                             submissions=essay_submissions)
+    finally:
+        db.close()
+
+@app.route("/update_essay_feedback/<int:history_id>", methods=["POST"])
+def update_essay_feedback(history_id):
+    """Update feedback for an essay submission in StudentHistory"""
+    if "teacher_id" not in session:
+        return redirect(url_for("login"))
+    
+    db = SessionLocal()
+    try:
+        history = db.query(StudentHistory).filter_by(id=history_id).first()
+        if not history:
+            flash("Submission not found", "danger")
+            return redirect(url_for("index"))
+        
+        # Update feedback and grading status
+        feedback = request.form.get("feedback", "").strip()
+        is_correct = int(request.form.get("is_correct", 0))
+        
+        history.correct_answer = feedback
+        history.is_correct = is_correct
+        
+        db.commit()
+        flash("Feedback saved successfully!", "success")
+        
+        return redirect(url_for("view_essay_submissions", assignment_id=history.assignment_id))
+    except Exception as e:
+        db.rollback()
+        flash(f"Error saving feedback: {str(e)}", "danger")
+        return redirect(url_for("index"))
+    finally:
+        db.close()
+
 # Server Startup
 
 # Combined ASGI application for production

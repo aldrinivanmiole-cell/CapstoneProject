@@ -13,6 +13,12 @@
       <p class="text-muted mb-0">{{ assignment.class_.subject }} • {{ questions|length }} question{{ 's' if questions|length != 1 else '' }}</p>
     </div>
     <div class="btn-group">
+      {% if questions and questions[0].question_type == 'essay' %}
+      <a href="{{ url_for('view_essay_submissions', assignment_id=assignment.id) }}" class="btn btn-success">
+        <span class="material-icons align-middle me-1" style="font-size: 18px;">description</span>
+        View Essays
+      </a>
+      {% endif %}
       <a href="{{ url_for('assignment_monitor', assignment_id=assignment.id) }}" class="btn btn-primary">
         <span class="material-icons align-middle me-1" style="font-size: 18px;">analytics</span>
         Monitor Progress
