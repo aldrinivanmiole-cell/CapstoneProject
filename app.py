@@ -1865,24 +1865,27 @@ def delete_assignment_api(assignment_id: int):
             raise HTTPException(status_code=404, detail="Assignment not found")
         
         # Delete related records in proper order
-        # 1. Delete student answers through submissions
+        # 1. Delete student history for this assignment
+        db.query(StudentHistory).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
+        
+        # 2. Delete student answers through submissions
         submissions = db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).all()
         for submission in submissions:
             db.query(StudentAnswer).filter_by(submission_id=submission.id).delete(synchronize_session=False)
         
-        # 2. Delete assignment submissions
+        # 3. Delete assignment submissions
         db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
         
-        # 3. Delete correct answers and options for all questions
+        # 4. Delete correct answers and options for all questions
         questions = db.query(Question).filter_by(assignment_id=assignment.id).all()
         for question in questions:
             db.query(CorrectAnswer).filter_by(question_id=question.id).delete(synchronize_session=False)
             db.query(QuestionOption).filter_by(question_id=question.id).delete(synchronize_session=False)
         
-        # 4. Delete questions
+        # 5. Delete questions
         db.query(Question).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
         
-        # 5. Finally delete the assignment
+        # 6. Finally delete the assignment
         db.delete(assignment)
         db.commit()
         
@@ -3680,20 +3683,22 @@ def delete_assignment(assignment_id):
             flash("Assignment not found", "danger")
         elif session.get("admin_id") or assignment.class_.teacher_id == session["teacher_id"]:
             # Delete related records in proper order
-            # 1. Delete student answers through submissions
+            # 1. Delete student history for this assignment
+            db.query(StudentHistory).filter_by(assignment_id=assignment.id).delete()
+            # 2. Delete student answers through submissions
             submissions = db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).all()
             for submission in submissions:
                 db.query(StudentAnswer).filter_by(submission_id=submission.id).delete()
-            # 2. Delete assignment submissions
+            # 3. Delete assignment submissions
             db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).delete()
-            # 3. Delete correct answers
+            # 4. Delete correct answers and options
             questions = db.query(Question).filter_by(assignment_id=assignment.id).all()
             for question in questions:
                 db.query(CorrectAnswer).filter_by(question_id=question.id).delete()
                 db.query(QuestionOption).filter_by(question_id=question.id).delete()
-            # 4. Delete questions
+            # 5. Delete questions
             db.query(Question).filter_by(assignment_id=assignment.id).delete()
-            # 5. Finally delete the assignment
+            # 6. Finally delete the assignment
             db.delete(assignment)
             db.commit()
             flash("Assignment deleted successfully", "success")
