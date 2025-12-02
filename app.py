@@ -1129,15 +1129,38 @@ def get_enumeration_questions(student_id: int, class_id: int = None, assignment_
         for assignment in assignments:
             for question in assignment.questions:
                 if question.question_type == "enumeration":  # Only enumeration questions
-                    correct_answer = ""
+                    # Build answers array with all correct answers marked
+                    answers_array = []
+                    
+                    # Get all correct answers from database
+                    correct_answer_texts = []
                     if question.correct_answers:
-                        correct_answer = question.correct_answers[0].answer_text
+                        for correct_ans in question.correct_answers:
+                            correct_answer_texts.append(correct_ans.answer_text)
+                    
+                    # Get all question options (if any exist for enumeration)
+                    all_options = set()
+                    if question.question_options:
+                        for opt in question.question_options:
+                            all_options.add(opt.option_text)
+                    
+                    # Include all correct answers
+                    for correct_text in correct_answer_texts:
+                        all_options.add(correct_text)
+                    
+                    # Build answers array
+                    for option_text in all_options:
+                        is_correct = 1 if option_text in correct_answer_texts else 0
+                        answers_array.append({
+                            "answer_description": option_text,
+                            "correct_answer": is_correct
+                        })
                     
                     questions_list.append({
                         "id": question.id,
                         "assignment_id": assignment.id,
                         "question_description": question.question_text,
-                        "correct_answer": correct_answer,
+                        "answers": answers_array,
                         "tutorial_link": question.help_video_url or ""
                     })
         
