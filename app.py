@@ -1237,6 +1237,12 @@ def get_yesno_questions(student_id: int, class_id: int = None, assignment_id: in
                     if question.correct_answers:
                         correct_answer = question.correct_answers[0].answer_text
                     
+                    # Normalize answer format (convert Yes/No to True/False)
+                    if correct_answer.lower() == "yes":
+                        correct_answer = "True"
+                    elif correct_answer.lower() == "no":
+                        correct_answer = "False"
+                    
                     # Build answers array with True/False options
                     answers = []
                     for option in ["True", "False"]:
