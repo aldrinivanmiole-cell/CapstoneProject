@@ -4094,7 +4094,7 @@ def view_essay_submissions(assignment_id):
 
 @app.route("/update_essay_feedback/<int:history_id>", methods=["POST"])
 def update_essay_feedback(history_id):
-    """Update feedback for an essay submission in StudentHistory"""
+    """Update grade for an essay submission in StudentHistory"""
     if "teacher_id" not in session:
         return redirect(url_for("login"))
     
@@ -4105,20 +4105,20 @@ def update_essay_feedback(history_id):
             flash("Submission not found", "danger")
             return redirect(url_for("index"))
         
-        # Update feedback and grading status
-        feedback = request.form.get("feedback", "").strip()
+        # Update score and grading status
+        score = request.form.get("score", "").strip()
         is_correct = int(request.form.get("is_correct", 0))
         
-        history.correct_answer = feedback
+        history.correct_answer = f"Score: {score}"
         history.is_correct = is_correct
         
         db.commit()
-        flash("Feedback saved successfully!", "success")
+        flash("Grade saved successfully!", "success")
         
         return redirect(url_for("view_essay_submissions", assignment_id=history.assignment_id))
     except Exception as e:
         db.rollback()
-        flash(f"Error saving feedback: {str(e)}", "danger")
+        flash(f"Error saving grade: {str(e)}", "danger")
         return redirect(url_for("index"))
     finally:
         db.close()

@@ -141,7 +141,7 @@
 <script>
 function deleteassignment(assignmentId, assignmentTitle) {
   if (confirm(`Are you sure you want to delete "${assignmentTitle}"? This action cannot be undone.`)) {
-    window.location.href = `/delete_assignment/${assignmentId}`;
+    window.location.href = `/dashboard/delete_assignment/${assignmentId}`;
   }
 }
 
