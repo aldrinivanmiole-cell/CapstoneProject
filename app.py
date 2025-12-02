@@ -4056,13 +4056,20 @@ def view_essay_submissions(assignment_id):
             return redirect(url_for("index"))
         
         # Get all essay submissions from StudentHistory for this assignment
-        essay_submissions = db.query(StudentHistory).filter_by(
-            assignment_id=assignment_id
-        ).order_by(StudentHistory.submitted_at.desc()).all()
+        try:
+            essay_submissions = db.query(StudentHistory).filter_by(
+                assignment_id=assignment_id
+            ).order_by(StudentHistory.id.desc()).all()
+        except Exception as e:
+            print(f"Error querying StudentHistory: {e}")
+            essay_submissions = []
         
         # Add student information
         for submission in essay_submissions:
-            submission.student = db.query(Student).filter_by(id=submission.student_id).first()
+            try:
+                submission.student = db.query(Student).filter_by(id=submission.student_id).first()
+            except:
+                submission.student = None
         
         return render_template("view_essay_submissions.html", 
                              assignment=assignment, 

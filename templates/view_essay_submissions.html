@@ -31,7 +31,7 @@
                     <div>
                         <h5 class="mb-0">{{ submission.student.name if submission.student else 'Unknown Student' }}</h5>
                         <small class="text-muted">
-                            Submitted: {{ submission.submitted_at.strftime('%B %d, %Y at %I:%M %p') if submission.submitted_at else 'Unknown' }}
+                            Submitted: {{ submission.answered_at.strftime('%B %d, %Y at %I:%M %p') if submission.answered_at else 'Unknown' }}
                         </small>
                     </div>
                     <div>
@@ -45,11 +45,11 @@
             </div>
             <div class="card-body">
                 <h6 class="text-muted mb-2">Question:</h6>
-                <p class="mb-3">{{ submission.question_description }}</p>
+                <p class="mb-3">{{ submission.question_text }}</p>
                 
                 <h6 class="text-primary mb-2">Student's Answer:</h6>
                 <div class="p-3 bg-light rounded">
-                    <p class="mb-0" style="white-space: pre-wrap;">{{ submission.player_answer }}</p>
+                    <p class="mb-0" style="white-space: pre-wrap;">{{ submission.student_answer }}</p>
                 </div>
                 
                 {% if submission.correct_answer and submission.correct_answer != 'Pending teacher review' %}
