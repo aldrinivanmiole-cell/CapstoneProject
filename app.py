@@ -1182,11 +1182,17 @@ def get_identification_questions(student_id: int, class_id: int = None, assignme
                     if question.correct_answers:
                         correct_answer = question.correct_answers[0].answer_text
                     
+                    # Build answers array with correct answer marked
+                    answers = [{
+                        "answer_description": correct_answer,
+                        "correct_answer": 1
+                    }]
+                    
                     questions_list.append({
                         "id": question.id,
                         "assignment_id": assignment.id,
                         "question_description": question.question_text,
-                        "correct_answer": correct_answer,
+                        "answers": answers,
                         "tutorial_link": question.help_video_url or ""
                     })
         
@@ -1231,11 +1237,19 @@ def get_yesno_questions(student_id: int, class_id: int = None, assignment_id: in
                     if question.correct_answers:
                         correct_answer = question.correct_answers[0].answer_text
                     
+                    # Build answers array with True/False options
+                    answers = []
+                    for option in ["True", "False"]:
+                        answers.append({
+                            "answer_description": option,
+                            "correct_answer": 1 if option == correct_answer else 0
+                        })
+                    
                     questions_list.append({
                         "id": question.id,
                         "assignment_id": assignment.id,
                         "question_description": question.question_text,
-                        "correct_answer": correct_answer,
+                        "answers": answers,
                         "tutorial_link": question.help_video_url or ""
                     })
         
