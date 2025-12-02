@@ -954,8 +954,8 @@ def unity_register(
 
 @api.get("/get_questions", summary="Get Multiple Choice Questions")
 @api.get("/get_questions.php", summary="Get Multiple Choice Questions (Legacy)")
-def get_multiple_choice_questions(student_id: int):
-    """Get multiple choice questions for student"""
+def get_multiple_choice_questions(student_id: int, class_id: int = None, assignment_id: int = None):
+    """Get multiple choice questions for student, optionally filtered by class or assignment"""
     db = SessionLocal()
     try:
         # Get student's enrolled classes
@@ -963,12 +963,23 @@ def get_multiple_choice_questions(student_id: int):
         if not enrollments:
             return []
         
-        # Get assignments from enrolled classes
-        class_ids = [e.class_id for e in enrollments]
-        assignments = db.query(Assignment).filter(
-            Assignment.class_id.in_(class_ids),
-            Assignment.is_archived == False
-        ).all()
+        # Filter by specific assignment if provided
+        if assignment_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.id == assignment_id,
+                Assignment.is_archived == False
+            ).all()
+        elif class_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id == class_id,
+                Assignment.is_archived == False
+            ).all()
+        else:
+            class_ids = [e.class_id for e in enrollments]
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id.in_(class_ids),
+                Assignment.is_archived == False
+            ).all()
         
         questions_list = []
         for assignment in assignments:
@@ -997,19 +1008,30 @@ def get_multiple_choice_questions(student_id: int):
 
 @api.get("/get_essay", summary="Get Essay Questions")
 @api.get("/get_essay.php", summary="Get Essay Questions (Legacy)")
-def get_essay_questions(student_id: int):
-    """Get essay questions for student"""
+def get_essay_questions(student_id: int, class_id: int = None, assignment_id: int = None):
+    """Get essay questions for student, optionally filtered by class or assignment"""
     db = SessionLocal()
     try:
         enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
         if not enrollments:
             return []
         
-        class_ids = [e.class_id for e in enrollments]
-        assignments = db.query(Assignment).filter(
-            Assignment.class_id.in_(class_ids),
-            Assignment.is_archived == False
-        ).all()
+        if assignment_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.id == assignment_id,
+                Assignment.is_archived == False
+            ).all()
+        elif class_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id == class_id,
+                Assignment.is_archived == False
+            ).all()
+        else:
+            class_ids = [e.class_id for e in enrollments]
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id.in_(class_ids),
+                Assignment.is_archived == False
+            ).all()
         
         questions_list = []
         for assignment in assignments:
@@ -1030,19 +1052,30 @@ def get_essay_questions(student_id: int):
 
 @api.get("/get_fib", summary="Get Fill in the Blank Questions")
 @api.get("/get_fib.php", summary="Get Fill in the Blank Questions (Legacy)")
-def get_fib_questions(student_id: int):
-    """Get fill-in-the-blank questions"""
+def get_fib_questions(student_id: int, class_id: int = None, assignment_id: int = None):
+    """Get fill-in-the-blank questions, optionally filtered by class or assignment"""
     db = SessionLocal()
     try:
         enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
         if not enrollments:
             return []
         
-        class_ids = [e.class_id for e in enrollments]
-        assignments = db.query(Assignment).filter(
-            Assignment.class_id.in_(class_ids),
-            Assignment.is_archived == False
-        ).all()
+        if assignment_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.id == assignment_id,
+                Assignment.is_archived == False
+            ).all()
+        elif class_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id == class_id,
+                Assignment.is_archived == False
+            ).all()
+        else:
+            class_ids = [e.class_id for e in enrollments]
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id.in_(class_ids),
+                Assignment.is_archived == False
+            ).all()
         
         questions_list = []
         for assignment in assignments:
@@ -1067,52 +1100,193 @@ def get_fib_questions(student_id: int):
 
 @api.get("/get_enumeration", summary="Get Enumeration Questions")
 @api.get("/get_enumeration.php", summary="Get Enumeration Questions (Legacy)")
-@api.get("/get_identification", summary="Get Identification Questions")
-@api.get("/get_identification.php", summary="Get Identification Questions (Legacy)")
-@api.get("/get_yesno", summary="Get Yes/No Questions")
-@api.get("/get_yesno.php", summary="Get Yes/No Questions (Legacy)")
-@api.get("/get_problems", summary="Get Problem Solving Questions")
-@api.get("/get_problems.php", summary="Get Problem Solving Questions (Legacy)")
-def get_all_question_types(student_id: int):
-    """Get all question types for student - works for enumeration, identification, yes/no, problems"""
+def get_enumeration_questions(student_id: int, class_id: int = None, assignment_id: int = None):
+    """Get enumeration questions for student, optionally filtered by class or assignment"""
     db = SessionLocal()
     try:
         enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
         if not enrollments:
             return []
         
-        class_ids = [e.class_id for e in enrollments]
-        assignments = db.query(Assignment).filter(
-            Assignment.class_id.in_(class_ids),
-            Assignment.is_archived == False
-        ).all()
+        if assignment_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.id == assignment_id,
+                Assignment.is_archived == False
+            ).all()
+        elif class_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id == class_id,
+                Assignment.is_archived == False
+            ).all()
+        else:
+            class_ids = [e.class_id for e in enrollments]
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id.in_(class_ids),
+                Assignment.is_archived == False
+            ).all()
         
         questions_list = []
         for assignment in assignments:
             for question in assignment.questions:
-                correct_answer = ""
-                if question.correct_answers:
-                    correct_answer = question.correct_answers[0].answer_text
-                
-                question_data = {
-                    "id": question.id,
-                    "assignment_id": assignment.id,
-                    "question_description": question.question_text,
-                    "correct_answer": correct_answer,
-                    "tutorial_link": question.help_video_url or ""
-                }
-                
-                # Add choices for multiple choice type questions
-                if question.question_type == "multiple_choice":
-                    choices = []
-                    for option in question.options:
-                        choices.append({
-                            "answer_description": option.option_text,
-                            "correct_answer": 1 if option.is_correct else 0
-                        })
-                    question_data["choices"] = choices
-                
-                questions_list.append(question_data)
+                if question.question_type == "enumeration":  # Only enumeration questions
+                    correct_answer = ""
+                    if question.correct_answers:
+                        correct_answer = question.correct_answers[0].answer_text
+                    
+                    questions_list.append({
+                        "id": question.id,
+                        "assignment_id": assignment.id,
+                        "question_description": question.question_text,
+                        "correct_answer": correct_answer,
+                        "tutorial_link": question.help_video_url or ""
+                    })
+        
+        return questions_list
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+@api.get("/get_identification", summary="Get Identification Questions")
+@api.get("/get_identification.php", summary="Get Identification Questions (Legacy)")
+def get_identification_questions(student_id: int, class_id: int = None, assignment_id: int = None):
+    """Get identification questions for student, optionally filtered by class or assignment"""
+    db = SessionLocal()
+    try:
+        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
+        if not enrollments:
+            return []
+        
+        if assignment_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.id == assignment_id,
+                Assignment.is_archived == False
+            ).all()
+        elif class_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id == class_id,
+                Assignment.is_archived == False
+            ).all()
+        else:
+            class_ids = [e.class_id for e in enrollments]
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id.in_(class_ids),
+                Assignment.is_archived == False
+            ).all()
+        
+        questions_list = []
+        for assignment in assignments:
+            for question in assignment.questions:
+                if question.question_type == "identification":  # Only identification questions
+                    correct_answer = ""
+                    if question.correct_answers:
+                        correct_answer = question.correct_answers[0].answer_text
+                    
+                    questions_list.append({
+                        "id": question.id,
+                        "assignment_id": assignment.id,
+                        "question_description": question.question_text,
+                        "correct_answer": correct_answer,
+                        "tutorial_link": question.help_video_url or ""
+                    })
+        
+        return questions_list
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+@api.get("/get_yesno", summary="Get Yes/No Questions")
+@api.get("/get_yesno.php", summary="Get Yes/No Questions (Legacy)")
+def get_yesno_questions(student_id: int, class_id: int = None, assignment_id: int = None):
+    """Get yes/no (true/false) questions for student, optionally filtered by class or assignment"""
+    db = SessionLocal()
+    try:
+        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
+        if not enrollments:
+            return []
+        
+        if assignment_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.id == assignment_id,
+                Assignment.is_archived == False
+            ).all()
+        elif class_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id == class_id,
+                Assignment.is_archived == False
+            ).all()
+        else:
+            class_ids = [e.class_id for e in enrollments]
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id.in_(class_ids),
+                Assignment.is_archived == False
+            ).all()
+        
+        questions_list = []
+        for assignment in assignments:
+            for question in assignment.questions:
+                if question.question_type == "yes_no":  # Only yes/no questions
+                    correct_answer = ""
+                    if question.correct_answers:
+                        correct_answer = question.correct_answers[0].answer_text
+                    
+                    questions_list.append({
+                        "id": question.id,
+                        "assignment_id": assignment.id,
+                        "question_description": question.question_text,
+                        "correct_answer": correct_answer,
+                        "tutorial_link": question.help_video_url or ""
+                    })
+        
+        return questions_list
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+@api.get("/get_problems", summary="Get Problem Solving Questions")
+@api.get("/get_problems.php", summary="Get Problem Solving Questions (Legacy)")
+def get_problem_questions(student_id: int, class_id: int = None, assignment_id: int = None):
+    """Get problem solving questions for student, optionally filtered by class or assignment"""
+    db = SessionLocal()
+    try:
+        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
+        if not enrollments:
+            return []
+        
+        if assignment_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.id == assignment_id,
+                Assignment.is_archived == False
+            ).all()
+        elif class_id:
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id == class_id,
+                Assignment.is_archived == False
+            ).all()
+        else:
+            class_ids = [e.class_id for e in enrollments]
+            assignments = db.query(Assignment).filter(
+                Assignment.class_id.in_(class_ids),
+                Assignment.is_archived == False
+            ).all()
+        
+        questions_list = []
+        for assignment in assignments:
+            for question in assignment.questions:
+                if question.question_type == "problem_solving":  # Only problem solving questions
+                    correct_answer = ""
+                    if question.correct_answers:
+                        correct_answer = question.correct_answers[0].answer_text
+                    
+                    questions_list.append({
+                        "id": question.id,
+                        "assignment_id": assignment.id,
+                        "question_description": question.question_text,
+                        "correct_answer": correct_answer,
+                        "tutorial_link": question.help_video_url or ""
+                    })
         
         return questions_list
     except Exception as e:
@@ -1238,6 +1412,29 @@ def submit_essay_answer(essay_data: dict):
     except Exception as e:
         db.rollback()
         return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+@api.get("/get_class_info", summary="Get Class Information")
+def get_class_info(class_id: int):
+    """Get class information including teacher_id"""
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        
+        class_ = db.query(Class).filter_by(id=class_id).first()
+        if not class_:
+            raise HTTPException(status_code=404, detail="Class not found")
+        
+        return {
+            "teacher_id": class_.teacher_id,
+            "class_name": class_.name,
+            "section": class_.section
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
 
@@ -1411,11 +1608,11 @@ def get_student_classrooms(student_id: int):
 @api.get("/get_assignment_types", summary="Get Assignment Types for Class")
 @api.get("/get_assignment_types.php", summary="Get Assignment Types for Class (Legacy)")
 def get_assignment_types(class_id: int, student_id: int = None):
-    """Get all question types available in a class's assignments with completion status"""
+    """Get all assignments in a class, each treated as a unique category"""
     db = SessionLocal()
     try:
-        # Get all questions from assignments in this class
-        questions = db.query(Question).join(Assignment).filter(
+        # Get all assignments in this class (non-archived)
+        assignments = db.query(Assignment).filter(
             Assignment.class_id == class_id,
             Assignment.is_archived == False
         ).all()
@@ -1431,43 +1628,40 @@ def get_assignment_types(class_id: int, student_id: int = None):
             "problem_solving": "Problem Solving"
         }
         
-        # Group by question type
-        categories = {}
-        for question in questions:
-            qt = question.question_type
-            display_name = type_mapping.get(qt, qt.replace("_", " ").title())
-            if display_name not in categories:
-                category_id = abs(hash(display_name)) % 10000
-                
-                # Check if student has completed ALL assignments of this type
-                is_completed = False
-                if student_id:
-                    # Get all assignments in this class that have this question type
-                    assignments_with_type = db.query(Assignment).join(Question).filter(
-                        Assignment.class_id == class_id,
-                        Assignment.is_archived == False,
-                        Question.question_type == qt
-                    ).distinct().all()
-                    
-                    # Check if student has submitted ALL of these assignments
-                    if assignments_with_type:
-                        assignment_ids = [a.id for a in assignments_with_type]
-                        submitted_assignments = db.query(AssignmentSubmission).filter(
-                            AssignmentSubmission.student_id == student_id,
-                            AssignmentSubmission.assignment_id.in_(assignment_ids)
-                        ).distinct().count()
-                        
-                        # Only mark as completed if ALL assignments of this type are submitted
-                        is_completed = submitted_assignments == len(assignment_ids)
-                
-                categories[display_name] = {
-                    "category_id": category_id,
-                    "description": display_name,
-                    "is_completed": is_completed
-                }
+        categories = []
+        for assignment in assignments:
+            # Get the dominant question type for this assignment
+            question_types = db.query(Question.question_type).filter(
+                Question.assignment_id == assignment.id
+            ).distinct().all()
+            
+            if not question_types:
+                continue
+            
+            # Use the first question type as the primary type
+            primary_type = question_types[0][0]
+            type_display = type_mapping.get(primary_type, primary_type.replace("_", " ").title())
+            
+            # Create unique description with assignment title
+            description = f"{assignment.title} ({type_display})"
+            
+            # Check if student has completed THIS specific assignment
+            is_completed = False
+            if student_id:
+                submission = db.query(AssignmentSubmission).filter(
+                    AssignmentSubmission.student_id == student_id,
+                    AssignmentSubmission.assignment_id == assignment.id
+                ).first()
+                is_completed = submission is not None
+            
+            categories.append({
+                "category_id": assignment.id,  # Use assignment ID as category ID
+                "description": description,
+                "is_completed": is_completed,
+                "question_type": primary_type  # Include for filtering
+            })
         
-        # Unity expects: category_id, description, is_completed
-        return list(categories.values())
+        return categories
     except Exception as e:
         return {"status": "error", "message": str(e)}
     finally:
@@ -1625,6 +1819,55 @@ def submit_assignment_from_game(assignment_id: int, submission_data: dict):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.delete("/assignment/{assignment_id}", summary="Delete Assignment from Unity")
+def delete_assignment_api(assignment_id: int):
+    """
+    Delete an assignment and all related data (questions, submissions, etc.)
+    Used by Unity game client
+    """
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        
+        # Find the assignment
+        assignment = db.query(Assignment).filter_by(id=assignment_id).first()
+        if not assignment:
+            raise HTTPException(status_code=404, detail="Assignment not found")
+        
+        # Delete related records in proper order
+        # 1. Delete student answers through submissions
+        submissions = db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).all()
+        for submission in submissions:
+            db.query(StudentAnswer).filter_by(submission_id=submission.id).delete(synchronize_session=False)
+        
+        # 2. Delete assignment submissions
+        db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
+        
+        # 3. Delete correct answers and options for all questions
+        questions = db.query(Question).filter_by(assignment_id=assignment.id).all()
+        for question in questions:
+            db.query(CorrectAnswer).filter_by(question_id=question.id).delete(synchronize_session=False)
+            db.query(QuestionOption).filter_by(question_id=question.id).delete(synchronize_session=False)
+        
+        # 4. Delete questions
+        db.query(Question).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
+        
+        # 5. Finally delete the assignment
+        db.delete(assignment)
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": f"Assignment '{assignment.title}' deleted successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting assignment: {str(e)}")
     finally:
         db.close()
 
@@ -3396,7 +3639,7 @@ def edit_assignment(assignment_id):
     finally:
         db.close()
 
-@app.route("/delete_assignment/<int:assignment_id>")
+@app.route("/delete_assignment/<int:assignment_id>", methods=["GET", "POST"])
 def delete_assignment(assignment_id):
     # Allow admin as well
     if not session.get("teacher_id") and not session.get("admin_id"):
@@ -3819,14 +4062,12 @@ def feedback_list():
     try:
         teacher_id = session.get("teacher_id")
         
-        # Admin can see all feedback, teacher sees only their students' feedback
+        # Admin can see all feedback, teacher sees only feedback directed to them
         if session.get("admin_id"):
             feedbacks = db.query(Feedback).order_by(Feedback.created_at.desc()).all()
         else:
-            # Get feedback from students in teacher's classes
-            teacher_class_ids = [c.id for c in db.query(Class).filter_by(teacher_id=teacher_id).all()]
-            student_ids = [e.student_id for e in db.query(Enrollment).filter(Enrollment.class_id.in_(teacher_class_ids)).all()]
-            feedbacks = db.query(Feedback).filter(Feedback.student_id.in_(student_ids)).order_by(Feedback.created_at.desc()).all()
+            # Teacher sees only feedback specifically sent to them
+            feedbacks = db.query(Feedback).filter_by(teacher_id=teacher_id).order_by(Feedback.created_at.desc()).all()
         
         # Load related data
         for feedback in feedbacks:
