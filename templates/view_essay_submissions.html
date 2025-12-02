@@ -117,7 +117,7 @@
 function gradeEssay(historyId, studentName) {
     document.getElementById('historyId').value = historyId;
     document.getElementById('studentName').value = studentName;
-    document.getElementById('feedbackForm').action = `/update_essay_feedback/${historyId}`;
+    document.getElementById('feedbackForm').action = `/dashboard/update_essay_feedback/${historyId}`;
     new bootstrap.Modal(document.getElementById('feedbackModal')).show();
 }
 </script>
