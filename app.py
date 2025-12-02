@@ -3675,43 +3675,58 @@ def delete_assignment(assignment_id):
     if not session.get("teacher_id") and not session.get("admin_id"):
         return redirect(url_for("login"))
 
-    assignment = None
     db = SessionLocal()
+    class_id = None
     try:
         assignment = db.query(Assignment).filter_by(id=assignment_id).first()
         if not assignment:
             flash("Assignment not found", "danger")
-        elif session.get("admin_id") or assignment.class_.teacher_id == session["teacher_id"]:
-            # Delete related records in proper order
-            # 1. Delete student history for this assignment
-            db.query(StudentHistory).filter_by(assignment_id=assignment.id).delete()
-            # 2. Delete student answers through submissions
-            submissions = db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).all()
-            for submission in submissions:
-                db.query(StudentAnswer).filter_by(submission_id=submission.id).delete()
-            # 3. Delete assignment submissions
-            db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).delete()
-            # 4. Delete correct answers and options
-            questions = db.query(Question).filter_by(assignment_id=assignment.id).all()
-            for question in questions:
-                db.query(CorrectAnswer).filter_by(question_id=question.id).delete()
-                db.query(QuestionOption).filter_by(question_id=question.id).delete()
-            # 5. Delete questions
-            db.query(Question).filter_by(assignment_id=assignment.id).delete()
-            # 6. Finally delete the assignment
-            db.delete(assignment)
-            db.commit()
-            flash("Assignment deleted successfully", "success")
-        else:
+            return redirect(url_for("index"))
+        
+        # Store class_id for redirect
+        class_id = assignment.class_id
+        
+        # Check permissions
+        if not (session.get("admin_id") or assignment.class_.teacher_id == session["teacher_id"]):
             flash("You don't have permission to delete this assignment", "danger")
+            return redirect(url_for("index"))
+        
+        # Delete related records in proper order
+        # 1. Delete student history for this assignment
+        db.query(StudentHistory).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
+        
+        # 2. Delete student answers through submissions
+        submissions = db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).all()
+        for submission in submissions:
+            db.query(StudentAnswer).filter_by(submission_id=submission.id).delete(synchronize_session=False)
+        
+        # 3. Delete assignment submissions
+        db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
+        
+        # 4. Delete correct answers and options
+        questions = db.query(Question).filter_by(assignment_id=assignment.id).all()
+        for question in questions:
+            db.query(CorrectAnswer).filter_by(question_id=question.id).delete(synchronize_session=False)
+            db.query(QuestionOption).filter_by(question_id=question.id).delete(synchronize_session=False)
+        
+        # 5. Delete questions
+        db.query(Question).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
+        
+        # 6. Finally delete the assignment
+        db.delete(assignment)
+        db.commit()
+        flash("Assignment deleted successfully", "success")
+        
     except Exception as e:
         db.rollback()
         flash(f"Error deleting assignment: {str(e)}", "danger")
+        print(f"Delete assignment error: {e}")
     finally:
         db.close()
     
-    if session.get("admin_id") and assignment:
-        return redirect(url_for("admin_class_assignments", class_id=assignment.class_id))
+    # Redirect based on user type
+    if session.get("admin_id") and class_id:
+        return redirect(url_for("admin_class_assignments", class_id=class_id))
     return redirect(url_for("index"))
 
 # --- Admin: Assignments list per class ---
