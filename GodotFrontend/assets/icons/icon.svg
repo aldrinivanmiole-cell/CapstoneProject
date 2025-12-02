@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="512" height="512" version="1.1" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
- <rect width="512" height="512" rx="64" fill="#4a90e2"/>
- <g fill="#ffffff">
-  <circle cx="256" cy="160" r="60"/>
-  <path d="m196 240c-44 0-80 36-80 80v92h280v-92c0-44-36-80-80-80z"/>
-  <text x="256" y="460" font-family="Arial" font-size="120" text-anchor="middle" font-weight="bold">🎓</text>
- </g>
-</svg>

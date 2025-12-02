@@ -318,12 +318,13 @@ function renderQuestions() {
             };
             
             row.querySelector('.form-check-input').onchange = e => {
+              const currentValue = row.querySelector('.option-text').value;
               if (e.target.checked) {
-                if (!q.correct_answers.includes(opt)) {
-                  q.correct_answers.push(opt);
+                if (!q.correct_answers.includes(currentValue)) {
+                  q.correct_answers.push(currentValue);
                 }
               } else {
-                q.correct_answers = q.correct_answers.filter(ans => ans !== opt);
+                q.correct_answers = q.correct_answers.filter(ans => ans !== currentValue);
               }
             };
           });
@@ -463,16 +464,22 @@ function renderQuestions() {
         q.options = ['Yes', 'No'];
         q.correct_answers = q.correct_answers || [];
         
+        const correctAnswer = q.correct_answers.length > 0 ? q.correct_answers[0] : '';
+        
         extraDiv.innerHTML = `
           <div class="mb-3">
             <label class="form-label">Correct Answer</label>
             <div class="form-check">
               <input class="form-check-input" type="radio" name="yes_no_${q.id}" id="yes_${q.id}" value="Yes" ${q.correct_answers.includes('Yes') ? 'checked' : ''}>
-              <label class="form-check-label" for="yes_${q.id}">Yes</label>
+              <label class="form-check-label" for="yes_${q.id}">
+                Yes ${correctAnswer === 'Yes' ? '<span class="badge bg-success ms-2">✓ Correct Answer</span>' : ''}
+              </label>
             </div>
             <div class="form-check">
               <input class="form-check-input" type="radio" name="yes_no_${q.id}" id="no_${q.id}" value="No" ${q.correct_answers.includes('No') ? 'checked' : ''}>
-              <label class="form-check-label" for="no_${q.id}">No</label>
+              <label class="form-check-label" for="no_${q.id}">
+                No ${correctAnswer === 'No' ? '<span class="badge bg-success ms-2">✓ Correct Answer</span>' : ''}
+              </label>
             </div>
           </div>`;
         
@@ -480,6 +487,7 @@ function renderQuestions() {
           radio.onchange = e => {
             if (e.target.checked) {
               q.correct_answers = [e.target.value];
+              renderExtra(); // Re-render to update the badge
             }
           };
         });

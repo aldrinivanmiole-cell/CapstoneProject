@@ -62,11 +62,19 @@
             <h6 class="mt-3 mb-2">Options:</h6>
             <ul class="list-unstyled">
               {% for option in question.options %}
-              <li class="mb-1">
-                <span class="badge bg-light text-dark me-2">{{ loop.index }}</span>
+              <li class="mb-2 p-2 rounded {% if option.is_correct %}bg-success bg-opacity-10{% else %}bg-light{% endif %}">
+                <span class="badge bg-secondary me-2">{{ loop.index }}</span>
                 {{ option.option_text }}
-                {% if option.option_text in question.correct_answers|map(attribute='answer_text')|list %}
-                  <span class="material-icons text-success ms-2" style="font-size: 16px;">check_circle</span>
+                {% if option.is_correct %}
+                  <span class="badge bg-success ms-2">
+                    <span class="material-icons" style="font-size: 14px; vertical-align: middle;">check_circle</span>
+                    Correct Answer
+                  </span>
+                {% else %}
+                  <span class="badge bg-secondary ms-2">
+                    <span class="material-icons" style="font-size: 14px; vertical-align: middle;">cancel</span>
+                    Wrong Answer
+                  </span>
                 {% endif %}
               </li>
               {% endfor %}
@@ -96,6 +104,44 @@
               <span class="material-icons me-2">lightbulb</span>
               {{ question.correct_answers[0].answer_text if question.correct_answers else 'No answer provided' }}
             </div>
+            
+          {% elif question.question_type == 'yes_no' %}
+            <h6 class="mt-3 mb-2">Options:</h6>
+            {% set correct_ans = question.correct_answers[0].answer_text if question.correct_answers else '' %}
+            <ul class="list-unstyled">
+              <li class="mb-2 p-2 rounded {{ 'bg-success bg-opacity-10' if correct_ans == 'Yes' else 'bg-light' }}">
+                <span class="badge bg-secondary me-2">1</span>
+                Yes
+                {% if correct_ans == 'Yes' %}
+                  <span class="badge bg-success ms-2">
+                    <span class="material-icons" style="font-size: 14px; vertical-align: middle;">check_circle</span>
+                    Correct Answer
+                  </span>
+                {% endif %}
+              </li>
+              <li class="mb-2 p-2 rounded {{ 'bg-success bg-opacity-10' if correct_ans == 'No' else 'bg-light' }}">
+                <span class="badge bg-secondary me-2">2</span>
+                No
+                {% if correct_ans == 'No' %}
+                  <span class="badge bg-success ms-2">
+                    <span class="material-icons" style="font-size: 14px; vertical-align: middle;">check_circle</span>
+                    Correct Answer
+                  </span>
+                {% endif %}
+              </li>
+            </ul>
+            
+          {% elif question.question_type == 'fill_in_the_blanks' %}
+            <h6 class="mt-3 mb-2">Correct answers:</h6>
+            <ul class="list-unstyled">
+              {% for answer in question.correct_answers %}
+              <li class="mb-1">
+                <span class="badge bg-primary me-2">Blank {{ loop.index }}</span>
+                <span class="material-icons text-success me-2" style="font-size: 16px;">check_circle</span>
+                {{ answer.answer_text }}
+              </li>
+              {% endfor %}
+            </ul>
             
           {% elif question.question_type == 'essay' %}
             <div class="alert alert-warning mt-3">

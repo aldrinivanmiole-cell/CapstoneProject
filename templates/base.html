@@ -304,6 +304,10 @@
             <i class="material-icons me-3">add</i>
             <span>Create Class</span>
           </a>
+          <a href="{{ url_for('feedback_list') }}" class="btn w-100 text-start d-flex align-items-center py-2 sidebar-nav-item {% if request.endpoint=='feedback_list' %}active{% endif %}">
+            <i class="material-icons me-3">feedback</i>
+            <span>Student Feedback</span>
+          </a>
           <a href="{{ url_for('archived_classes') }}" class="btn w-100 text-start d-flex align-items-center py-2 sidebar-nav-item">
             <i class="material-icons me-3">archive</i>
             <span>Archived Classes{% if archived_count is defined and archived_count %} ({{ archived_count }}){% endif %}</span>
@@ -330,6 +334,7 @@
           <li class="nav-item"><a class="nav-link" href="{{ url_for('admin_students') }}">Students</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('admin_classes') }}">Classes</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('admin_enrollments') }}">Enrollments</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('feedback_list') }}">Feedback</a></li>
         </ul>
         <div class="d-flex">
           <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin_logout') }}">Logout</a>
