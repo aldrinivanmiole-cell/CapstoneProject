@@ -1006,6 +1006,43 @@ def get_multiple_choice_questions(student_id: int, class_id: int = None, assignm
     finally:
         db.close()
 
+@api.get("/get_multiple_choice", summary="Get Multiple Choice Questions (Indiana Jones Game)")
+def get_multiple_choice_for_game(assignment_id: int):
+    """Get multiple choice questions for the Indiana Jones treasure hunt game"""
+    db = SessionLocal()
+    try:
+        # Get assignment
+        assignment = db.query(Assignment).filter(
+            Assignment.id == assignment_id,
+            Assignment.is_archived == False
+        ).first()
+        
+        if not assignment:
+            return {"questions": []}
+        
+        questions_list = []
+        for question in assignment.questions:
+            if question.question_type == "multiple_choice":
+                answers = []
+                for option in question.options:
+                    answers.append({
+                        "answer_id": option.id,
+                        "answer_text": option.option_text,
+                        "correct_answer": 1 if option.is_correct else 0
+                    })
+                
+                questions_list.append({
+                    "question_id": question.id,
+                    "question_text": question.question_text,
+                    "answers": answers
+                })
+        
+        return {"questions": questions_list}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
 @api.get("/get_essay", summary="Get Essay Questions")
 @api.get("/get_essay.php", summary="Get Essay Questions (Legacy)")
 def get_essay_questions(student_id: int, class_id: int = None, assignment_id: int = None):
