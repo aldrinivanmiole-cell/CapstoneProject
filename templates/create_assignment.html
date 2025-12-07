@@ -247,8 +247,12 @@ function renderQuestions() {
     const card = document.createElement('div');
     card.className = 'question-card';
     let optionsHtml = '';
+    let correctHtml = '';
+    let helpHtml = `<div class="mb-3">
+      <label class="form-label">Help Video URL (YouTube/Drive)</label>
+      <input type="text" class="form-control help-video-url" value="${q.help_video_url || ''}" placeholder="Paste YouTube or Drive link here">
+    </div>`;
     if (q.type === 'multiple_choice') {
-      // Always show 4 options only
       optionsHtml = `<div class="mb-3">
         <label class="form-label">Options (A, B, C, D)</label>
         <div class="row g-2">
@@ -257,6 +261,33 @@ function renderQuestions() {
           <div class="col-3"><input type="text" class="form-control option-input" value="${q.options && q.options[2] ? q.options[2] : ''}" data-opt="2" maxlength="100" placeholder="Option C"></div>
           <div class="col-3"><input type="text" class="form-control option-input" value="${q.options && q.options[3] ? q.options[3] : ''}" data-opt="3" maxlength="100" placeholder="Option D"></div>
         </div>
+      </div>`;
+      correctHtml = `<div class="mb-3">
+        <label class="form-label">Correct Answer</label>
+        <select class="form-select correct-answer-select">
+          <option value="0" ${q.correct_answer == 0 ? 'selected' : ''}>A</option>
+          <option value="1" ${q.correct_answer == 1 ? 'selected' : ''}>B</option>
+          <option value="2" ${q.correct_answer == 2 ? 'selected' : ''}>C</option>
+          <option value="3" ${q.correct_answer == 3 ? 'selected' : ''}>D</option>
+        </select>
+      </div>`;
+    } else if (q.type === 'identification' || q.type === 'problem_solving') {
+      correctHtml = `<div class="mb-3">
+        <label class="form-label">Correct Answer</label>
+        <input type="text" class="form-control identification-answer" value="${q.correct_answer || ''}" placeholder="Enter the correct answer">
+      </div>`;
+    } else if (q.type === 'fill_in_the_blanks' || q.type === 'enumeration') {
+      correctHtml = `<div class="mb-3">
+        <label class="form-label">Correct Answers (comma separated)</label>
+        <input type="text" class="form-control fill-answers" value="${q.correct_answers ? q.correct_answers.join(', ') : ''}" placeholder="Answer1, Answer2, ...">
+      </div>`;
+    } else if (q.type === 'yes_no') {
+      correctHtml = `<div class="mb-3">
+        <label class="form-label">Correct Answer</label>
+        <select class="form-select yesno-correct">
+          <option value="Yes" ${q.correct_answer == 'Yes' ? 'selected' : ''}>Yes</option>
+          <option value="No" ${q.correct_answer == 'No' ? 'selected' : ''}>No</option>
+        </select>
       </div>`;
     }
     card.innerHTML = `
@@ -289,6 +320,8 @@ function renderQuestions() {
         </div>
       </div>
       ${optionsHtml}
+      ${correctHtml}
+      ${helpHtml}
     `;
     container.appendChild(card);
 
