@@ -202,6 +202,11 @@ function createTemplate(type, count) {
 }
 
 function addQuestionOfType(type) {
+  if (selectedQuestionType && selectedQuestionType !== type) {
+    alert('You cannot mix question types. Please reset to change type.');
+    return;
+  }
+  selectedQuestionType = type;
   const question = {
     id: ++qId, 
     text: '', 
@@ -220,6 +225,7 @@ function addQuestionOfType(type) {
   }
   
   questions.push(question);
+  renderQuestions();
 }
 
 function showCustomTemplate() {
@@ -240,6 +246,19 @@ function renderQuestions() {
   questions.forEach((q, index) => {
     const card = document.createElement('div');
     card.className = 'question-card';
+    let optionsHtml = '';
+    if (q.type === 'multiple_choice') {
+      // Always show 4 options only
+      optionsHtml = `<div class="mb-3">
+        <label class="form-label">Options (A, B, C, D)</label>
+        <div class="row g-2">
+          <div class="col-3"><input type="text" class="form-control option-input" value="${q.options && q.options[0] ? q.options[0] : ''}" data-opt="0" maxlength="100" placeholder="Option A"></div>
+          <div class="col-3"><input type="text" class="form-control option-input" value="${q.options && q.options[1] ? q.options[1] : ''}" data-opt="1" maxlength="100" placeholder="Option B"></div>
+          <div class="col-3"><input type="text" class="form-control option-input" value="${q.options && q.options[2] ? q.options[2] : ''}" data-opt="2" maxlength="100" placeholder="Option C"></div>
+          <div class="col-3"><input type="text" class="form-control option-input" value="${q.options && q.options[3] ? q.options[3] : ''}" data-opt="3" maxlength="100" placeholder="Option D"></div>
+        </div>
+      </div>`;
+    }
     card.innerHTML = `
       <div class="d-flex justify-content-between align-items-start mb-3">
         <h3 class="h6 mb-0">Question ${index + 1}</h3>
@@ -252,7 +271,7 @@ function renderQuestions() {
       <div class="row g-3 mb-3">
         <div class="col-md-3">
           <label class="form-label">Type</label>
-          <select class="form-select question-type">
+          <select class="form-select question-type" disabled>
             ${typeOptions.map(t => `<option value="${t.value}" ${t.value===q.type?'selected':''}>${t.label}</option>`).join('')}
           </select>
         </div>
@@ -268,12 +287,8 @@ function renderQuestions() {
           <label class="form-label">Points</label>
           <input type="number" min="1" class="form-control question-points" value="${q.points}">
         </div>
-        <div class="col-md-4">
-          <label class="form-label">Help Video URL (optional)</label>
-          <input type="url" class="form-control help-video" value="${q.help_video_url || ''}" placeholder="YouTube URL">
-        </div>
       </div>
-      <div class="question-extra"></div>
+      ${optionsHtml}
     `;
     container.appendChild(card);
 
@@ -508,7 +523,6 @@ function renderQuestions() {
     card.querySelector('.question-difficulty').onchange = e => { q.difficulty = e.target.value; };
     card.querySelector('.question-points').oninput = e => { q.points = parseInt(e.target.value)||1; };
     card.querySelector('.help-video').oninput = e => { q.help_video_url = e.target.value; };
-    renderExtra();ctor('.help-video').oninput = e => { q.help_video_url = e.target.value; };
     renderExtra();
   });
 }
@@ -605,7 +619,7 @@ function showAddAnotherButton(type) {
 // Function to reset and allow changing question type
 function resetQuestionType() {
   selectedQuestionType = null;
-  questions = []; // Clear all questions
+  questions = [];
   renderQuestions();
   
   // Reset all buttons to original state
@@ -644,8 +658,31 @@ function getButtonColor(type) {
 // Start with empty assignment
 renderQuestions();
 
+function collectQuestionsFromUI() {
+  const cards = document.querySelectorAll('.question-card');
+  questions = [];
+  cards.forEach((card, idx) => {
+    const text = card.querySelector('.question-text').value;
+    const type = card.querySelector('.question-type').value;
+    const difficulty = card.querySelector('.question-difficulty').value;
+    const points = parseInt(card.querySelector('.question-points').value) || 1;
+    let options = [];
+    if (type === 'multiple_choice') {
+      options = Array.from(card.querySelectorAll('.option-input')).map(input => input.value);
+    }
+    questions.push({
+      id: idx + 1,
+      text,
+      type,
+      difficulty,
+      points,
+      options
+    });
+  });
+}
+
 document.getElementById('assignmentForm').onsubmit = function(e){
-  // embed questions JSON
+  collectQuestionsFromUI();
   document.getElementById('questionsInput').value = JSON.stringify(questions);
 };
 </script>
