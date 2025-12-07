@@ -1,0 +1,679 @@
+{% extends "base.html" %}
+{% block title %}{{ assignment.title }} - Take Assignment{% endblock %}
+
+{% block extra_styles %}
+<style>
+  .question-card {
+    transition: all 0.3s ease;
+  }
+  .question-navigation {
+    position: sticky;
+    top: 20px;
+  }
+  .nav-dot {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 5px;
+    cursor: pointer;
+    border: 2px solid #ccc;
+    background: white;
+    font-weight: bold;
+    transition: all 0.2s;
+  }
+  .nav-dot:hover {
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+  .nav-dot.answered {
+    background: #d1ecf1;
+    border-color: #0dcaf0;
+  }
+  .nav-dot.current {
+    background: #0dcaf0;
+    color: white;
+    border-color: #0dcaf0;
+    transform: scale(1.15);
+  }
+  .nav-dot.locked {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #f8f9fa;
+  }
+  .difficulty-badge {
+    font-size: 1.1rem;
+    padding: 8px 16px;
+  }
+  .result-panel {
+    display: none;
+    margin-top: 15px;
+    padding: 15px;
+    border-radius: 8px;
+    animation: slideDown 0.3s ease;
+  }
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .result-correct {
+    background: #d1e7dd;
+    border: 2px solid #0f5132;
+    color: #0f5132;
+  }
+  .result-incorrect {
+    background: #f8d7da;
+    border: 2px solid #842029;
+    color: #842029;
+  }
+  .child-friendly-modal .modal-content {
+    border-radius: 20px;
+    border: 3px solid #0dcaf0;
+  }
+  .child-friendly-modal .modal-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 17px 17px 0 0;
+  }
+  .child-friendly-modal .btn-lg {
+    border-radius: 15px;
+    font-size: 1.2rem;
+    padding: 12px 30px;
+  }
+  .question-hidden {
+    display: none;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="row">
+    <!-- Question Navigation Sidebar -->
+    <div class="col-md-3">
+      <div class="question-navigation">
+        <div class="card">
+          <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">📝 Questions</h5>
+          </div>
+          <div class="card-body">
+            <div id="questionNav" class="text-center"></div>
+            <hr>
+            <div class="small">
+              <div class="mb-2">
+                <span class="badge bg-success">Easy 😊</span>
+                <span class="badge bg-warning">Medium 🤔</span>
+                <span class="badge bg-danger">Hard 🔥</span>
+              </div>
+              <p class="text-muted mb-0">
+                <small>💡 You can go back within the same difficulty level!</small>
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Progress Auto-Save Indicator -->
+        <div class="card mt-3">
+          <div class="card-body text-center">
+            <span class="material-icons text-success" id="saveIcon">cloud_done</span>
+            <p class="mb-0 small text-muted" id="saveStatus">Progress saved</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Question Area -->
+    <div class="col-md-9">
+      <div class="card mb-4">
+        <div class="card-body text-center">
+          <h1 class="h3 mb-2">{{ assignment.title }}</h1>
+          <p class="text-muted">{{ assignment.class_.name }}</p>
+        </div>
+      </div>
+
+      <!-- Questions Container -->
+      <div id="questionsContainer">
+        {% for question in questions %}
+        <div class="card question-card mb-4 question-hidden" id="question-{{ loop.index0 }}" data-question-id="{{ question.id }}" data-difficulty="{{ question.difficulty }}" data-index="{{ loop.index0 }}">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+              <h5 class="card-title mb-0">Question {{ loop.index }}</h5>
+              <div class="d-flex align-items-center gap-2">
+                {% if question.difficulty == 'easy' %}
+                <span class="badge bg-success difficulty-badge">Easy 😊</span>
+                {% elif question.difficulty == 'medium' %}
+                <span class="badge bg-warning difficulty-badge">Medium 🤔</span>
+                {% elif question.difficulty == 'hard' %}
+                <span class="badge bg-danger difficulty-badge">Hard 🔥</span>
+                {% else %}
+                <span class="badge bg-secondary difficulty-badge">Easy 😊</span>
+                {% endif %}
+                <span class="badge bg-primary">{{ question.points }} point{{ 's' if question.points != 1 else '' }}</span>
+              </div>
+            </div>
+            
+            <p class="card-text mb-3 fs-5">{{ question.question_text }}</p>
+            
+            {% if question.help_video_url %}
+            <div class="alert alert-light mb-3">
+              <div class="d-flex align-items-center">
+                <span class="material-icons text-primary me-2">play_circle</span>
+                <div>
+                  <strong>Need help?</strong> 
+                  <a href="{{ question.help_video_url }}" target="_blank" class="text-decoration-none">
+                    Watch this video guide
+                    <span class="material-icons align-middle ms-1" style="font-size: 16px;">open_in_new</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+            
+            <div class="answer-section">
+              {% if question.question_type == 'multiple_choice' %}
+                {% for option in question.options %}
+                <div class="form-check mb-3 p-3 border rounded answer-option" style="cursor: pointer; transition: all 0.2s;" onclick="selectAnswer({{ loop.index0 }}, {{ loop.parent.loop.index0 }}, '{{ option.option_text }}', this)">
+                  <input class="form-check-input" type="radio" name="question_{{ question.id }}" 
+                         id="q{{ question.id }}_{{ loop.index }}" value="{{ option.option_text }}" style="cursor: pointer;">
+                  <label class="form-check-label w-100" for="q{{ question.id }}_{{ loop.index }}" style="cursor: pointer; font-size: 1.1rem;">
+                    {{ option.option_text }}
+                  </label>
+                </div>
+                {% endfor %}
+                
+              {% elif question.question_type == 'identification' %}
+                <div class="mb-3">
+                  <label class="form-label">Your answer:</label>
+                  <input type="text" class="form-control form-control-lg answer-input" name="question_{{ question.id }}" 
+                         placeholder="Enter your answer" data-question-index="{{ loop.index0 }}">
+                </div>
+                
+              {% elif question.question_type == 'fill_in_the_blanks' %}
+                <div class="mb-3">
+                  <label class="form-label">Fill in the blanks:</label>
+                  <div class="fill-in-blanks-container">
+                    <div class="question-display mb-3 p-3 bg-light rounded fs-5" id="question-display-{{ question.id }}">
+                      {{ question.question_text }}
+                    </div>
+                    <input type="hidden" class="answer-input" name="question_{{ question.id }}" id="hidden-answer-{{ question.id }}" data-question-index="{{ loop.index0 }}">
+                  </div>
+                </div>
+                
+              {% elif question.question_type == 'yes_no' %}
+                {% for option in question.options %}
+                <div class="form-check mb-3 p-3 border rounded answer-option" style="cursor: pointer; transition: all 0.2s;" onclick="selectAnswer({{ loop.index0 }}, {{ loop.parent.loop.index0 }}, '{{ option.option_text }}', this)">
+                  <input class="form-check-input" type="radio" name="question_{{ question.id }}" 
+                         id="q{{ question.id }}_{{ loop.index }}" value="{{ option.option_text }}" style="cursor: pointer;">
+                  <label class="form-check-label w-100" for="q{{ question.id }}_{{ loop.index }}" style="cursor: pointer; font-size: 1.1rem;">
+                    {{ option.option_text }}
+                  </label>
+                </div>
+                {% endfor %}
+                
+              {% elif question.question_type == 'enumeration' %}
+                <div class="mb-3">
+                  <label class="form-label">Your answer:</label>
+                  <input type="text" class="form-control form-control-lg answer-input" name="question_{{ question.id }}" 
+                         placeholder="List your answers" data-question-index="{{ loop.index0 }}">
+                </div>
+                
+              {% elif question.question_type == 'problem_solving' %}
+                <div class="mb-3">
+                  <label class="form-label">Your answer:</label>
+                  <input type="text" class="form-control form-control-lg answer-input" name="question_{{ question.id }}" 
+                         placeholder="Enter your answer" data-question-index="{{ loop.index0 }}">
+                </div>
+                
+              {% elif question.question_type == 'essay' %}
+                <div class="mb-3">
+                  <label class="form-label">Your essay:</label>
+                  <textarea class="form-control form-control-lg answer-input" name="question_{{ question.id }}" rows="6" 
+                            placeholder="Write your essay here..." data-question-index="{{ loop.index0 }}"></textarea>
+                </div>
+              {% endif %}
+            </div>
+
+            <!-- Result Panel (Hidden Initially) -->
+            <div class="result-panel" id="result-{{ loop.index0 }}">
+              <div class="d-flex align-items-center">
+                <span class="material-icons me-2 result-icon"></span>
+                <div>
+                  <h5 class="mb-0 result-title"></h5>
+                  <p class="mb-0 result-message"></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="d-flex justify-content-between mt-4">
+              <button type="button" class="btn btn-outline-secondary btn-lg" onclick="previousQuestion()" id="prevBtn-{{ loop.index0 }}">
+                <span class="material-icons align-middle">arrow_back</span> Previous
+              </button>
+              
+              <button type="button" class="btn btn-primary btn-lg" onclick="nextQuestion()" id="nextBtn-{{ loop.index0 }}" style="display: none;">
+                Next <span class="material-icons align-middle">arrow_forward</span>
+              </button>
+              
+              <button type="button" class="btn btn-success btn-lg" onclick="finishAssignment()" id="finishBtn-{{ loop.index0 }}" style="display: none;">
+                <span class="material-icons align-middle">check_circle</span> Finish Assignment
+              </button>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Child-Friendly Confirmation Modal -->
+<div class="modal fade child-friendly-modal" id="confirmModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4 class="modal-title w-100 text-center">
+          <span class="material-icons align-middle me-2" style="font-size: 2rem;">help_outline</span>
+          Are you sure?
+        </h4>
+      </div>
+      <div class="modal-body text-center py-4">
+        <p class="fs-5 mb-4">Do you want to pick this answer? 🤔</p>
+        <p class="text-muted">Think carefully before you choose!</p>
+      </div>
+      <div class="modal-footer justify-content-center border-0">
+        <button type="button" class="btn btn-outline-secondary btn-lg" onclick="cancelAnswer()">
+          <span class="material-icons align-middle">close</span> Let me think more
+        </button>
+        <button type="button" class="btn btn-primary btn-lg" onclick="confirmAnswer()">
+          <span class="material-icons align-middle">check</span> Yes, I'm sure!
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Form for final submission -->
+<form id="finalSubmissionForm" method="post" style="display: none;">
+  <input type="hidden" name="answers_json" id="answersJson">
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Global state
+const assignmentId = {{ assignment.id }};
+const studentId = {{ session.get('student_id', 'null') }};
+let currentQuestionIndex = 0;
+let userAnswers = {};
+let questionDifficulties = {};
+let difficultyRanges = { easy: [], medium: [], hard: [] };
+let lockedQuestions = new Set();
+let pendingAnswer = null;
+let selectedElement = null;
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+  loadProgress();
+  initializeQuestions();
+  setupAutoSave();
+  setupFillInTheBlanks();
+  showQuestion(currentQuestionIndex);
+  renderNavigation();
+});
+
+function initializeQuestions() {
+  const questions = document.querySelectorAll('.question-card');
+  questions.forEach((q, index) => {
+    const difficulty = q.dataset.difficulty || 'easy';
+    questionDifficulties[index] = difficulty;
+    difficultyRanges[difficulty].push(index);
+  });
+  
+  console.log('Difficulty ranges:', difficultyRanges);
+}
+
+function setupFillInTheBlanks() {
+  {% for question in questions %}
+  {% if question.question_type == 'fill_in_the_blanks' %}
+  (function() {
+    const questionDisplay = document.getElementById('question-display-{{ question.id }}');
+    const hiddenInput = document.getElementById('hidden-answer-{{ question.id }}');
+    if (!questionDisplay || !hiddenInput) return;
+    
+    let questionText = questionDisplay.textContent;
+    let blankCount = 0;
+    questionText = questionText.replace(/_____/g, function() {
+      blankCount++;
+      return `<input type="text" class="form-control d-inline-block blank-input" style="width: 200px; margin: 0 5px; font-size: 1.1rem;" placeholder="Answer ${blankCount}" data-blank="${blankCount}">`;
+    });
+    
+    questionDisplay.innerHTML = questionText;
+    
+    function updateHiddenField() {
+      const blankInputs = questionDisplay.querySelectorAll('.blank-input');
+      const answers = Array.from(blankInputs).map(input => input.value);
+      hiddenInput.value = answers.join('|');
+      
+      // Trigger change event for auto-save
+      hiddenInput.dispatchEvent(new Event('input'));
+    }
+    
+    questionDisplay.addEventListener('input', function(e) {
+      if (e.target.classList.contains('blank-input')) {
+        updateHiddenField();
+      }
+    });
+  })();
+  {% endif %}
+  {% endfor %}
+}
+
+function selectAnswer(optionIndex, questionIndex, answerText, element) {
+  pendingAnswer = { optionIndex, questionIndex, answerText };
+  selectedElement = element;
+  
+  // Show confirmation modal
+  const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+  modal.show();
+}
+
+function cancelAnswer() {
+  pendingAnswer = null;
+  selectedElement = null;
+  bootstrap.Modal.getInstance(document.getElementById('confirmModal')).hide();
+}
+
+function confirmAnswer() {
+  if (!pendingAnswer) return;
+  
+  const { optionIndex, questionIndex, answerText } = pendingAnswer;
+  
+  // Mark the answer
+  const radio = selectedElement.querySelector('input[type="radio"]');
+  if (radio) {
+    radio.checked = true;
+  }
+  
+  // Highlight selected option
+  const answerSection = document.querySelector(`#question-${questionIndex} .answer-section`);
+  answerSection.querySelectorAll('.answer-option').forEach(opt => {
+    opt.style.background = 'white';
+    opt.style.borderColor = '#dee2e6';
+  });
+  selectedElement.style.background = '#e7f3ff';
+  selectedElement.style.borderColor = '#0dcaf0';
+  selectedElement.style.borderWidth = '2px';
+  
+  // Save answer
+  const questionCard = document.getElementById(`question-${questionIndex}`);
+  const questionId = questionCard.dataset.questionId;
+  userAnswers[questionId] = answerText;
+  
+  // Lock previous questions in different difficulty
+  lockPreviousDifficulties(questionIndex);
+  
+  // Save progress
+  saveProgress();
+  
+  // Show next button
+  showNextButton(questionIndex);
+  
+  // Update navigation
+  renderNavigation();
+  
+  // Hide modal
+  bootstrap.Modal.getInstance(document.getElementById('confirmModal')).hide();
+  
+  // Clear pending
+  pendingAnswer = null;
+  selectedElement = null;
+}
+
+function showQuestion(index) {
+  // Hide all questions
+  document.querySelectorAll('.question-card').forEach(q => {
+    q.classList.add('question-hidden');
+  });
+  
+  // Show current question
+  const currentQuestion = document.getElementById(`question-${index}`);
+  if (currentQuestion) {
+    currentQuestion.classList.remove('question-hidden');
+    currentQuestionIndex = index;
+    
+    // Update navigation
+    renderNavigation();
+    
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+
+function nextQuestion() {
+  // Check if answer is provided
+  const currentQuestion = document.getElementById(`question-${currentQuestionIndex}`);
+  const questionId = currentQuestion.dataset.questionId;
+  
+  if (!userAnswers[questionId] || userAnswers[questionId].trim() === '') {
+    alert('Please provide an answer before moving to the next question! 📝');
+    return;
+  }
+  
+  const totalQuestions = document.querySelectorAll('.question-card').length;
+  if (currentQuestionIndex < totalQuestions - 1) {
+    currentQuestionIndex++;
+    showQuestion(currentQuestionIndex);
+    
+    // Lock previous questions in different difficulty
+    lockPreviousDifficulties(currentQuestionIndex);
+  }
+}
+
+function previousQuestion() {
+  const currentDifficulty = questionDifficulties[currentQuestionIndex];
+  const difficultyQuestions = difficultyRanges[currentDifficulty];
+  const currentPosInDifficulty = difficultyQuestions.indexOf(currentQuestionIndex);
+  
+  if (currentPosInDifficulty > 0) {
+    // Can go back within same difficulty
+    currentQuestionIndex = difficultyQuestions[currentPosInDifficulty - 1];
+    showQuestion(currentQuestionIndex);
+  } else {
+    alert('You cannot go back to previous difficulty level! 🔒');
+  }
+}
+
+function lockPreviousDifficulties(currentIndex) {
+  const currentDifficulty = questionDifficulties[currentIndex];
+  const difficultyQuestions = difficultyRanges[currentDifficulty];
+  const isLastInDifficulty = difficultyQuestions.indexOf(currentIndex) === difficultyQuestions.length - 1;
+  
+  if (isLastInDifficulty) {
+    // Lock all questions in previous difficulties
+    for (let i = 0; i < currentIndex; i++) {
+      if (questionDifficulties[i] !== currentDifficulty) {
+        lockedQuestions.add(i);
+      }
+    }
+  }
+}
+
+function showNextButton(questionIndex) {
+  const nextBtn = document.getElementById(`nextBtn-${questionIndex}`);
+  const finishBtn = document.getElementById(`finishBtn-${questionIndex}`);
+  const totalQuestions = document.querySelectorAll('.question-card').length;
+  
+  if (questionIndex === totalQuestions - 1) {
+    // Last question - show finish button
+    if (finishBtn) finishBtn.style.display = 'inline-block';
+    if (nextBtn) nextBtn.style.display = 'none';
+  } else {
+    // Not last question - show next button
+    if (nextBtn) nextBtn.style.display = 'inline-block';
+    if (finishBtn) finishBtn.style.display = 'none';
+  }
+}
+
+function renderNavigation() {
+  const navContainer = document.getElementById('questionNav');
+  const totalQuestions = document.querySelectorAll('.question-card').length;
+  
+  let html = '';
+  for (let i = 0; i < totalQuestions; i++) {
+    const questionCard = document.getElementById(`question-${i}`);
+    const questionId = questionCard.dataset.questionId;
+    const isAnswered = userAnswers[questionId] && userAnswers[questionId].trim() !== '';
+    const isCurrent = i === currentQuestionIndex;
+    const isLocked = lockedQuestions.has(i);
+    
+    let classes = 'nav-dot';
+    if (isCurrent) classes += ' current';
+    else if (isAnswered) classes += ' answered';
+    if (isLocked) classes += ' locked';
+    
+    const onclick = isLocked ? '' : `onclick="navigateToQuestion(${i})"`;
+    html += `<div class="${classes}" ${onclick} title="Question ${i + 1}">${i + 1}</div>`;
+  }
+  
+  navContainer.innerHTML = html;
+}
+
+function navigateToQuestion(index) {
+  if (lockedQuestions.has(index)) {
+    alert('This question is locked! You can only go back within the same difficulty level. 🔒');
+    return;
+  }
+  
+  const currentDifficulty = questionDifficulties[currentQuestionIndex];
+  const targetDifficulty = questionDifficulties[index];
+  
+  if (currentDifficulty !== targetDifficulty) {
+    alert('You can only navigate within the same difficulty level! 🔒');
+    return;
+  }
+  
+  showQuestion(index);
+}
+
+// Auto-save functionality
+function setupAutoSave() {
+  // Listen to all answer inputs
+  document.querySelectorAll('.answer-input').forEach(input => {
+    input.addEventListener('input', function() {
+      const questionIndex = parseInt(this.dataset.questionIndex);
+      const questionCard = document.getElementById(`question-${questionIndex}`);
+      const questionId = questionCard.dataset.questionId;
+      userAnswers[questionId] = this.value;
+      saveProgress();
+      renderNavigation();
+      showNextButton(questionIndex);
+    });
+  });
+}
+
+function saveProgress() {
+  const progress = {
+    currentQuestionIndex,
+    userAnswers,
+    lockedQuestions: Array.from(lockedQuestions),
+    timestamp: new Date().toISOString()
+  };
+  
+  localStorage.setItem(`assignment_progress_${assignmentId}_${studentId}`, JSON.stringify(progress));
+  
+  // Update save indicator
+  const saveIcon = document.getElementById('saveIcon');
+  const saveStatus = document.getElementById('saveStatus');
+  saveIcon.textContent = 'cloud_done';
+  saveIcon.className = 'material-icons text-success';
+  saveStatus.textContent = 'Progress saved';
+  
+  console.log('Progress saved:', progress);
+}
+
+function loadProgress() {
+  const saved = localStorage.getItem(`assignment_progress_${assignmentId}_${studentId}`);
+  if (saved) {
+    const progress = JSON.parse(saved);
+    currentQuestionIndex = progress.currentQuestionIndex || 0;
+    userAnswers = progress.userAnswers || {};
+    lockedQuestions = new Set(progress.lockedQuestions || []);
+    
+    console.log('Progress loaded:', progress);
+    
+    // Restore UI state
+    setTimeout(() => {
+      Object.keys(userAnswers).forEach(questionId => {
+        const answer = userAnswers[questionId];
+        const input = document.querySelector(`input[name="question_${questionId}"], textarea[name="question_${questionId}"]`);
+        if (input && input.type !== 'radio') {
+          input.value = answer;
+        } else if (input && input.type === 'radio') {
+          const radio = document.querySelector(`input[name="question_${questionId}"][value="${answer}"]`);
+          if (radio) {
+            radio.checked = true;
+            const answerOption = radio.closest('.answer-option');
+            if (answerOption) {
+              answerOption.style.background = '#e7f3ff';
+              answerOption.style.borderColor = '#0dcaf0';
+              answerOption.style.borderWidth = '2px';
+            }
+          }
+        }
+      });
+      
+      // Show appropriate buttons
+      document.querySelectorAll('.question-card').forEach((card, index) => {
+        const questionId = card.dataset.questionId;
+        if (userAnswers[questionId]) {
+          showNextButton(index);
+        }
+      });
+    }, 100);
+  }
+}
+
+function finishAssignment() {
+  const totalQuestions = document.querySelectorAll('.question-card').length;
+  const answeredCount = Object.keys(userAnswers).length;
+  
+  if (answeredCount < totalQuestions) {
+    if (!confirm(`You've only answered ${answeredCount} out of ${totalQuestions} questions. Do you want to submit anyway?`)) {
+      return;
+    }
+  }
+  
+  // Prepare answers for submission
+  const answersArray = [];
+  document.querySelectorAll('.question-card').forEach(card => {
+    const questionId = card.dataset.questionId;
+    answersArray.push({
+      question_id: parseInt(questionId),
+      answer: userAnswers[questionId] || ''
+    });
+  });
+  
+  document.getElementById('answersJson').value = JSON.stringify(answersArray);
+  
+  // Clear saved progress
+  localStorage.removeItem(`assignment_progress_${assignmentId}_${studentId}`);
+  
+  // Submit form
+  document.getElementById('finalSubmissionForm').submit();
+}
+
+// Handle page unload - auto-save
+window.addEventListener('beforeunload', function(e) {
+  saveProgress();
+});
+</script>
+{% endblock %}

@@ -134,6 +134,7 @@ class Question(Base):
     question_type = Column(String(20), nullable=False)  # multiple_choice, yes_no, identification, fill_in_the_blanks, problem_solving, enumeration, essay
     points = Column(Integer, default=1)
     help_video_url = Column(String(255))  # YouTube or other video URL
+    difficulty = Column(String(10), default="easy")  # easy, medium, hard
     assignment = relationship("Assignment", back_populates="questions")
     options = relationship("QuestionOption", back_populates="question", cascade="all, delete-orphan")
     correct_answers = relationship("CorrectAnswer", back_populates="question", cascade="all, delete-orphan")
@@ -254,6 +255,19 @@ class FeedbackReply(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     feedback = relationship("Feedback", back_populates="replies")
     teacher = relationship("Teacher")
+
+class AssignmentProgress(Base):
+    """Track Unity/Mobile app assignment progress for resume functionality"""
+    __tablename__ = "assignment_progress"
+    id = Column(Integer, primary_key=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    assignment_id = Column(Integer, ForeignKey("assignments.id", ondelete="CASCADE"), nullable=False)
+    current_question_index = Column(Integer, default=0)
+    answers_json = Column(Text)  # JSON string of answered questions
+    locked_questions_json = Column(Text)  # JSON array of locked question indices
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    student = relationship("Student")
+    assignment = relationship("Assignment")
 
 class Admin(Base):
     __tablename__ = "admins"
@@ -546,7 +560,8 @@ def get_assignment_for_game(assignment_id: int):
                 "question_text": q.question_text,  # Unity expects question_text, not text
                 "question_type": q.question_type,  # Unity expects question_type, not type
                 "points": q.points,
-                "help_video_url": q.help_video_url
+                "help_video_url": q.help_video_url,
+                "difficulty": getattr(q, 'difficulty', 'easy')  # Default to easy if not set
             }
             
             # Add options for multiple choice and yes_no questions
@@ -1867,6 +1882,14 @@ def submit_assignment_from_game(assignment_id: int, submission_data: dict):
         percentage = (score / total_points * 100) if total_points > 0 else 0
         grade = "A" if percentage >= 90 else "B" if percentage >= 80 else "C" if percentage >= 70 else "D" if percentage >= 60 else "F"
         
+        # Clear any saved progress for this assignment
+        progress = db.query(AssignmentProgress).filter_by(
+            assignment_id=assignment_id, student_id=student_id
+        ).first()
+        if progress:
+            db.delete(progress)
+            db.commit()
+        
         return {
             "status": "success",
             "results": {
@@ -1883,6 +1906,137 @@ def submit_assignment_from_game(assignment_id: int, submission_data: dict):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.post("/assignment/{assignment_id}/save_progress", summary="Save Assignment Progress (Unity)")
+def save_assignment_progress(assignment_id: int, progress_data: dict):
+    """Save student's progress during assignment for resume functionality"""
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        student_id = progress_data.get("student_id")
+        current_question_index = progress_data.get("current_question_index", 0)
+        answers = progress_data.get("answers", {})
+        locked_questions = progress_data.get("locked_questions", [])
+        
+        if not student_id:
+            raise HTTPException(status_code=400, detail="Student ID is required")
+        
+        # Check if assignment exists
+        assignment = db.query(Assignment).filter_by(id=assignment_id).first()
+        if not assignment:
+            raise HTTPException(status_code=404, detail="Assignment not found")
+        
+        # Check if already submitted (don't save progress if submitted)
+        existing_submission = db.query(AssignmentSubmission).filter_by(
+            assignment_id=assignment_id, student_id=student_id
+        ).first()
+        if existing_submission:
+            return {
+                "status": "success",
+                "message": "Assignment already submitted, no progress saved",
+                "submitted": True
+            }
+        
+        # Find or create progress record
+        progress = db.query(AssignmentProgress).filter_by(
+            assignment_id=assignment_id, student_id=student_id
+        ).first()
+        
+        if progress:
+            progress.current_question_index = current_question_index
+            progress.answers_json = json.dumps(answers)
+            progress.locked_questions_json = json.dumps(locked_questions)
+            progress.last_updated = datetime.utcnow()
+        else:
+            progress = AssignmentProgress(
+                student_id=student_id,
+                assignment_id=assignment_id,
+                current_question_index=current_question_index,
+                answers_json=json.dumps(answers),
+                locked_questions_json=json.dumps(locked_questions)
+            )
+            db.add(progress)
+        
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": "Progress saved successfully",
+            "submitted": False,
+            "last_updated": progress.last_updated.isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error saving progress: {str(e)}")
+    finally:
+        db.close()
+
+@api.get("/assignment/{assignment_id}/get_progress", summary="Get Assignment Progress (Unity)")
+def get_assignment_progress(assignment_id: int, student_id: int):
+    """Retrieve saved progress for resuming assignment"""
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        
+        # Check if assignment exists
+        assignment = db.query(Assignment).filter_by(id=assignment_id).first()
+        if not assignment:
+            raise HTTPException(status_code=404, detail="Assignment not found")
+        
+        # Check if already submitted
+        existing_submission = db.query(AssignmentSubmission).filter_by(
+            assignment_id=assignment_id, student_id=student_id
+        ).first()
+        
+        if existing_submission:
+            return {
+                "status": "success",
+                "has_progress": False,
+                "submitted": True,
+                "message": "Assignment already submitted",
+                "submission_id": existing_submission.id
+            }
+        
+        # Get progress
+        progress = db.query(AssignmentProgress).filter_by(
+            assignment_id=assignment_id, student_id=student_id
+        ).first()
+        
+        if not progress:
+            return {
+                "status": "success",
+                "has_progress": False,
+                "submitted": False,
+                "message": "No saved progress found"
+            }
+        
+        # Parse JSON data
+        try:
+            answers = json.loads(progress.answers_json) if progress.answers_json else {}
+            locked_questions = json.loads(progress.locked_questions_json) if progress.locked_questions_json else []
+        except json.JSONDecodeError:
+            answers = {}
+            locked_questions = []
+        
+        return {
+            "status": "success",
+            "has_progress": True,
+            "submitted": False,
+            "progress": {
+                "current_question_index": progress.current_question_index,
+                "answers": answers,
+                "locked_questions": locked_questions,
+                "last_updated": progress.last_updated.isoformat()
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving progress: {str(e)}")
     finally:
         db.close()
 
@@ -3437,16 +3591,18 @@ def create_assignment(class_id):
                     print(f"Skipping invalid question {i+1}: type={q_type}, text='{q_text}'")
                     continue  # skip invalid question
 
+                difficulty = q.get("difficulty", "easy")  # Default to easy if not specified
                 question = Question(
                     assignment_id=assignment.id,
                     question_text=q_text,
                     question_type=q_type,
                     points=points,
-                    help_video_url=help_video_url
+                    help_video_url=help_video_url,
+                    difficulty=difficulty
                 )
                 db.add(question)
                 db.flush()
-                print(f"Created question {i+1} with ID: {question.id}")
+                print(f"Created question {i+1} with ID: {question.id}, difficulty: {difficulty}")
 
                 # Handle specific types
                 if q_type == "multiple_choice":
@@ -3804,15 +3960,30 @@ def take_assignment(assignment_id):
 
         if request.method == "POST":
             # Process quiz submission
-            student_name = request.form.get("student_name", "Anonymous")
             answers = {}
             score = 0
             total_points = 0
             
+            # Check if submission is JSON-based (from enhanced template)
+            answers_json_str = request.form.get("answers_json", "")
+            if answers_json_str:
+                try:
+                    submitted_answers = json.loads(answers_json_str)
+                    answer_map = {int(item['question_id']): item['answer'] for item in submitted_answers}
+                except (json.JSONDecodeError, KeyError):
+                    answer_map = {}
+            else:
+                answer_map = {}
+            
             for question in assignment.questions:
                 total_points += question.points
-                answer_key = f"question_{question.id}"
-                student_answer = request.form.get(answer_key, "").strip()
+                
+                # Get student answer from JSON or form data
+                if answer_map:
+                    student_answer = answer_map.get(question.id, "").strip()
+                else:
+                    answer_key = f"question_{question.id}"
+                    student_answer = request.form.get(answer_key, "").strip()
                 
                 if student_answer:
                     is_correct = False
@@ -3885,11 +4056,11 @@ def take_assignment(assignment_id):
             return redirect(url_for("assignment_results", assignment_id=assignment_id))
         
         # GET request - show quiz form
-        questions = db.query(Question).filter_by(assignment_id=assignment_id).all()
+        questions = db.query(Question).filter_by(assignment_id=assignment_id).order_by(Question.id).all()
         
-        # Load options for multiple choice questions
+        # Load options for multiple choice and yes_no questions
         for question in questions:
-            if question.question_type == "multiple_choice":
+            if question.question_type in ["multiple_choice", "yes_no"]:
                 question.options = db.query(QuestionOption).filter_by(question_id=question.id).all()
 
         if request.method == "GET":
@@ -3898,7 +4069,7 @@ def take_assignment(assignment_id):
                 if question.question_type == "multiple_choice":
                     random.shuffle(question.options)
 
-        return render_template("take_assignment.html", assignment=assignment, questions=questions)
+        return render_template("take_assignment_enhanced.html", assignment=assignment, questions=questions)
 
     except SQLAlchemyError as e:
         flash("Error loading assignment", "danger")
