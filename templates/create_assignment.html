@@ -256,10 +256,13 @@ function renderQuestions() {
       optionsHtml = `<div class="mb-3">
         <label class="form-label">Options (A, B, C, D)</label>
         <div class="row g-2">
-          <div class="col-3"><input type="text" class="form-control option-input" value="${q.options && q.options[0] ? q.options[0] : ''}" data-opt="0" maxlength="100" placeholder="Option A"></div>
-          <div class="col-3"><input type="text" class="form-control option-input" value="${q.options && q.options[1] ? q.options[1] : ''}" data-opt="1" maxlength="100" placeholder="Option B"></div>
-          <div class="col-3"><input type="text" class="form-control option-input" value="${q.options && q.options[2] ? q.options[2] : ''}" data-opt="2" maxlength="100" placeholder="Option C"></div>
-          <div class="col-3"><input type="text" class="form-control option-input" value="${q.options && q.options[3] ? q.options[3] : ''}" data-opt="3" maxlength="100" placeholder="Option D"></div>
+          ${[0,1,2,3].map(i => `
+            <div class="col-12 d-flex align-items-center mb-2">
+              <input type="checkbox" class="form-check-input mcq-correct" data-opt="${i}" ${q.correct_answer == i ? 'checked' : ''} style="margin-right:8px;">
+              <input type="text" class="form-control option-input" value="${q.options && q.options[i] ? q.options[i] : ''}" data-opt="${i}" maxlength="100" placeholder="Option ${String.fromCharCode(65+i)}">
+              <span class="ms-2">${String.fromCharCode(65+i)}</span>
+            </div>
+          `).join('')}
         </div>
       </div>`;
       correctHtml = `<div class="mb-3">
@@ -335,6 +338,20 @@ function renderQuestions() {
       card.querySelectorAll('.option-input').forEach((input, i) => {
         input.oninput = e => {
           q.options[i] = e.target.value;
+        };
+      });
+      card.querySelectorAll('.mcq-correct').forEach((checkbox, i) => {
+        checkbox.onchange = e => {
+          if (e.target.checked) {
+            q.correct_answer = i;
+            // Uncheck all others
+            card.querySelectorAll('.mcq-correct').forEach((cb, idx) => {
+              if (idx !== i) cb.checked = false;
+            });
+          } else {
+            // If unchecked, remove correct answer
+            if (q.correct_answer === i) q.correct_answer = null;
+          }
         };
       });
     }
