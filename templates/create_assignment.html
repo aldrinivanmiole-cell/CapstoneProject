@@ -265,15 +265,7 @@ function renderQuestions() {
           `).join('')}
         </div>
       </div>`;
-      correctHtml = `<div class="mb-3">
-        <label class="form-label">Correct Answer</label>
-        <select class="form-select correct-answer-select">
-          <option value="0" ${q.correct_answer == 0 ? 'selected' : ''}>A</option>
-          <option value="1" ${q.correct_answer == 1 ? 'selected' : ''}>B</option>
-          <option value="2" ${q.correct_answer == 2 ? 'selected' : ''}>C</option>
-          <option value="3" ${q.correct_answer == 3 ? 'selected' : ''}>D</option>
-        </select>
-      </div>`;
+      correctHtml = '';
     } else if (q.type === 'identification' || q.type === 'problem_solving') {
       correctHtml = `<div class="mb-3">
         <label class="form-label">Correct Answer</label>
