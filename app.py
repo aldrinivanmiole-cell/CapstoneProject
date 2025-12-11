@@ -1828,7 +1828,9 @@ def submit_assignment_from_game(assignment_id: int, submission_data: dict):
             if answer:
                 if question.question_type == "multiple_choice":
                     correct_answers = db.query(CorrectAnswer).filter_by(question_id=question.id).all()
-                    if any(ca.answer_text == answer for ca in correct_answers):
+                    # Normalize answer for comparison (strip whitespace and lowercase)
+                    normalized_answer = answer.strip().lower()
+                    if any(ca.answer_text.strip().lower() == normalized_answer for ca in correct_answers):
                         is_correct = True
                         points_earned = question.points
                 
@@ -3991,7 +3993,9 @@ def take_assignment(assignment_id):
                     
                     if question.question_type == "multiple_choice":
                         correct_answers = db.query(CorrectAnswer).filter_by(question_id=question.id).all()
-                        if any(ans.answer_text == student_answer for ans in correct_answers):
+                        # Normalize answer for comparison (strip whitespace and lowercase)
+                        normalized_answer = student_answer.strip().lower()
+                        if any(ans.answer_text.strip().lower() == normalized_answer for ans in correct_answers):
                             is_correct = True
                             points_earned = question.points
                     
