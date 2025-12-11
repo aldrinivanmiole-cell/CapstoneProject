@@ -489,18 +489,54 @@ function collectQuestionsFromUI() {
     const type = card.querySelector('.question-type').value;
     const difficulty = card.querySelector('.question-difficulty').value;
     const points = parseInt(card.querySelector('.question-points').value) || 1;
+    const helpVideoUrl = card.querySelector('.help-video-url')?.value || '';
+    
     let options = [];
+    let correct_answers = [];
+    let correct_answer = '';
+    
     if (type === 'multiple_choice') {
       options = Array.from(card.querySelectorAll('.option-input')).map(input => input.value);
+      // Collect checked options as correct answers
+      const checkedBoxes = card.querySelectorAll('.mcq-correct:checked');
+      checkedBoxes.forEach(checkbox => {
+        const optIndex = parseInt(checkbox.dataset.opt);
+        if (options[optIndex]) {
+          correct_answers.push(options[optIndex]);
+        }
+      });
+    } else if (type === 'identification' || type === 'problem_solving') {
+      const answerInput = card.querySelector('.identification-answer');
+      if (answerInput) {
+        correct_answer = answerInput.value;
+      }
+    } else if (type === 'fill_in_the_blanks' || type === 'enumeration') {
+      const answersInput = card.querySelector('.fill-answers');
+      if (answersInput) {
+        correct_answers = answersInput.value.split(',').map(a => a.trim()).filter(a => a);
+      }
+    } else if (type === 'yes_no') {
+      const yesnoSelect = card.querySelector('.yesno-correct');
+      if (yesnoSelect) {
+        correct_answer = yesnoSelect.value;
+        options = ['Yes', 'No'];
+      }
     }
-    questions.push({
+    
+    const question = {
       id: idx + 1,
       text,
       type,
       difficulty,
       points,
-      options
-    });
+      help_video_url: helpVideoUrl
+    };
+    
+    if (options.length > 0) question.options = options;
+    if (correct_answers.length > 0) question.correct_answers = correct_answers;
+    if (correct_answer) question.correct_answer = correct_answer;
+    
+    questions.push(question);
   });
 }
 
