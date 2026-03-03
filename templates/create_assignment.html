@@ -83,6 +83,10 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
+        <div class="alert alert-info">
+          <i class="material-icons align-middle">info</i>
+          <strong>Note:</strong> All questions in this assignment will be of the same type for consistency.
+        </div>
         <div class="mb-3">
           <label class="form-label">Question Type</label>
           <select class="form-select" id="customType">
@@ -202,19 +206,15 @@ function createTemplate(type, count) {
 }
 
 function addQuestionOfType(type) {
-  if (selectedQuestionType && selectedQuestionType !== type) {
-    alert('You cannot mix question types. Please reset to change type.');
-    return;
-  }
-  selectedQuestionType = type;
   const question = {
     id: ++qId, 
     text: '', 
     type: type, 
     points: 1, 
     help_video_url: '',
-    difficulty: 'easy',
-    correct_answers: []
+    correct_answers: [],
+    slot_count: 4,
+    word_bank: []
   };
   
   if (type === 'multiple_choice') {
@@ -225,7 +225,6 @@ function addQuestionOfType(type) {
   }
   
   questions.push(question);
-  renderQuestions();
 }
 
 function showCustomTemplate() {
@@ -236,7 +235,13 @@ function createCustomTemplate() {
   const type = document.getElementById('customType').value;
   const count = parseInt(document.getElementById('customCount').value) || 5;
   
+  // Lock the question type for the entire assignment
+  selectedQuestionType = type;
   createTemplate(type, count);
+  
+  // Update UI to show the type is locked
+  updateQuestionTypeUI(type);
+  
   bootstrap.Modal.getInstance(document.getElementById('customTemplateModal')).hide();
 }
 
@@ -246,45 +251,6 @@ function renderQuestions() {
   questions.forEach((q, index) => {
     const card = document.createElement('div');
     card.className = 'question-card';
-    let optionsHtml = '';
-    let correctHtml = '';
-    let helpHtml = `<div class="mb-3">
-      <label class="form-label">Help Video URL (YouTube/Drive)</label>
-      <input type="text" class="form-control help-video-url" value="${q.help_video_url || ''}" placeholder="Paste YouTube or Drive link here">
-    </div>`;
-    if (q.type === 'multiple_choice') {
-      optionsHtml = `<div class="mb-3">
-        <label class="form-label">Options (A, B, C, D)</label>
-        <div class="row g-2">
-          ${[0,1,2,3].map(i => `
-            <div class="col-12 d-flex align-items-center mb-2">
-              <input type="checkbox" class="form-check-input mcq-correct" data-opt="${i}" ${q.correct_answer == i ? 'checked' : ''} style="margin-right:8px;">
-              <input type="text" class="form-control option-input" value="${q.options && q.options[i] ? q.options[i] : ''}" data-opt="${i}" maxlength="100" placeholder="Option ${String.fromCharCode(65+i)}">
-              <span class="ms-2">${String.fromCharCode(65+i)}</span>
-            </div>
-          `).join('')}
-        </div>
-      </div>`;
-      correctHtml = '';
-    } else if (q.type === 'identification' || q.type === 'problem_solving') {
-      correctHtml = `<div class="mb-3">
-        <label class="form-label">Correct Answer</label>
-        <input type="text" class="form-control identification-answer" value="${q.correct_answer || ''}" placeholder="Enter the correct answer">
-      </div>`;
-    } else if (q.type === 'fill_in_the_blanks' || q.type === 'enumeration') {
-      correctHtml = `<div class="mb-3">
-        <label class="form-label">Correct Answers (comma separated)</label>
-        <input type="text" class="form-control fill-answers" value="${q.correct_answers ? q.correct_answers.join(', ') : ''}" placeholder="Answer1, Answer2, ...">
-      </div>`;
-    } else if (q.type === 'yes_no') {
-      correctHtml = `<div class="mb-3">
-        <label class="form-label">Correct Answer</label>
-        <select class="form-select yesno-correct">
-          <option value="Yes" ${q.correct_answer == 'Yes' ? 'selected' : ''}>Yes</option>
-          <option value="No" ${q.correct_answer == 'No' ? 'selected' : ''}>No</option>
-        </select>
-      </div>`;
-    }
     card.innerHTML = `
       <div class="d-flex justify-content-between align-items-start mb-3">
         <h3 class="h6 mb-0">Question ${index + 1}</h3>
@@ -295,28 +261,23 @@ function renderQuestions() {
         <textarea class="form-control question-text" rows="2">${q.text || ''}</textarea>
       </div>
       <div class="row g-3 mb-3">
-        <div class="col-md-3">
+        <div class="col-md-4">
           <label class="form-label">Type</label>
-          <select class="form-select question-type" disabled>
+          <select class="form-select question-type" ${selectedQuestionType ? 'disabled' : ''}>
             ${typeOptions.map(t => `<option value="${t.value}" ${t.value===q.type?'selected':''}>${t.label}</option>`).join('')}
           </select>
+          ${selectedQuestionType ? '<small class="text-muted">Type locked for consistency</small>' : ''}
         </div>
-        <div class="col-md-3">
-          <label class="form-label">Difficulty</label>
-          <select class="form-select question-difficulty">
-            <option value="easy" ${q.difficulty==='easy'?'selected':''}>Easy 😊</option>
-            <option value="medium" ${q.difficulty==='medium'?'selected':''}>Medium 🤔</option>
-            <option value="hard" ${q.difficulty==='hard'?'selected':''}>Hard 🔥</option>
-          </select>
-        </div>
-        <div class="col-md-2">
+        <div class="col-md-4">
           <label class="form-label">Points</label>
           <input type="number" min="1" class="form-control question-points" value="${q.points}">
         </div>
+        <div class="col-md-4">
+          <label class="form-label">Help Video URL (optional)</label>
+          <input type="url" class="form-control help-video" value="${q.help_video_url || ''}" placeholder="YouTube URL">
+        </div>
       </div>
-      ${optionsHtml}
-      ${correctHtml}
-      ${helpHtml}
+      <div class="question-extra"></div>
     `;
     container.appendChild(card);
 
@@ -325,28 +286,257 @@ function renderQuestions() {
       questions = questions.filter(qq => qq.id !== q.id);
       renderQuestions();
     };
-    // Option listeners for MCQ
-    if (q.type === 'multiple_choice') {
-      card.querySelectorAll('.option-input').forEach((input, i) => {
-        input.oninput = e => {
-          q.options[i] = e.target.value;
+
+    const typeSelect = card.querySelector('.question-type');
+    const extraDiv = card.querySelector('.question-extra');
+
+    function renderExtra() {
+      extraDiv.innerHTML = '';
+      const qt = typeSelect.value;
+      if (qt === 'multiple_choice') {
+        extraDiv.innerHTML = `
+          <label class="form-label">Options</label>
+          <div class="options-container"></div>
+          <button type="button" class="btn btn-sm btn-outline-secondary add-option">Add option</button>`;
+        const optContainer = extraDiv.querySelector('.options-container');
+        q.options = q.options || [''];
+        function renderOpts() {
+          optContainer.innerHTML = '';
+          q.options.forEach((opt, oi) => {
+            const row = document.createElement('div');
+            row.className = 'option-input';
+            row.innerHTML = `
+              <input type="text" class="form-control option-text" value="${opt}" placeholder="Option ${oi + 1}">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="correct_${q.id}_${oi}" ${q.correct_answers.includes(opt) ? 'checked' : ''}>
+                <label class="form-check-label" for="correct_${q.id}_${oi}">Correct</label>
+              </div>
+              <span class="material-icons text-danger remove-opt" data-idx="${oi}">close</span>`;
+            optContainer.appendChild(row);
+            
+            row.querySelector('.remove-opt').onclick = () => { 
+              q.options.splice(oi,1); 
+              q.correct_answers = q.correct_answers.filter(ans => ans !== opt);
+              renderOpts(); 
+            };
+            
+            row.querySelector('.option-text').oninput = e => { 
+              const oldValue = q.options[oi];
+              q.options[oi] = e.target.value; 
+              // Update correct answers if this option was marked as correct
+              const correctIndex = q.correct_answers.indexOf(oldValue);
+              if (correctIndex !== -1) {
+                q.correct_answers[correctIndex] = e.target.value;
+              }
+            };
+            
+            row.querySelector('.form-check-input').onchange = e => {
+              if (e.target.checked) {
+                if (!q.correct_answers.includes(opt)) {
+                  q.correct_answers.push(opt);
+                }
+              } else {
+                q.correct_answers = q.correct_answers.filter(ans => ans !== opt);
+              }
+            };
+          });
+        }
+        renderOpts();
+        extraDiv.querySelector('.add-option').onclick = () => { q.options.push(''); renderOpts(); };
+      } else if (qt === 'identification') {
+        extraDiv.innerHTML = `
+          <label class="form-label">Correct answer</label>
+          <input type="text" class="form-control identification-answer" value="${q.correct_answer||''}" placeholder="Enter the correct answer">`;
+        extraDiv.querySelector('.identification-answer').oninput = e => { q.correct_answer = e.target.value; };
+      } else if (qt === 'fill_in_the_blanks') {
+        extraDiv.innerHTML = `
+          <div class="mb-3">
+            <label class="form-label">Question Text</label>
+            <small class="text-muted d-block mb-2">Type your question and use _____ for blanks</small>
+            <div class="alert alert-info p-2">
+              <strong>Example:</strong> The capital of _____ is _____.
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Answers for Blanks</label>
+            <div class="answers-list"></div>
+            <button type="button" class="btn btn-sm btn-success add-answer-btn">+ Add Answer</button>
+          </div>`;
+        
+        const answersList = extraDiv.querySelector('.answers-list');
+        
+        function renderAnswers() {
+          answersList.innerHTML = '';
+          q.correct_answers = q.correct_answers || [];
+          
+          q.correct_answers.forEach((answer, index) => {
+            answersList.innerHTML += `
+              <div class="d-flex gap-2 mb-2">
+                <span class="badge bg-primary">Blank ${index + 1}</span>
+                <input type="text" class="form-control answer-input" value="${answer}" placeholder="Answer ${index + 1}">
+                <button type="button" class="btn btn-sm btn-danger remove-btn" data-index="${index}">×</button>
+              </div>`;
+          });
+          
+          // Add event listeners
+          answersList.querySelectorAll('.answer-input').forEach((input, index) => {
+            input.oninput = () => q.correct_answers[index] = input.value;
+          });
+          
+          answersList.querySelectorAll('.remove-btn').forEach(btn => {
+            btn.onclick = () => {
+              q.correct_answers.splice(btn.dataset.index, 1);
+              renderAnswers();
+            };
+          });
+        }
+        
+        extraDiv.querySelector('.add-answer-btn').onclick = () => {
+          q.correct_answers.push('');
+          renderAnswers();
         };
-      });
-      card.querySelectorAll('.mcq-correct').forEach((checkbox, i) => {
-        checkbox.onchange = e => {
-          if (e.target.checked) {
-            q.correct_answer = i;
-            // Uncheck all others
-            card.querySelectorAll('.mcq-correct').forEach((cb, idx) => {
-              if (idx !== i) cb.checked = false;
-            });
-          } else {
-            // If unchecked, remove correct answer
-            if (q.correct_answer === i) q.correct_answer = null;
+        
+        renderAnswers();
+        
+      } else if (qt === 'enumeration') {
+        extraDiv.innerHTML = `
+          <div class="mb-3 row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Slot Count (1-4)</label>
+              <input type="number" min="1" max="4" class="form-control enum-slot-count" value="${q.slot_count || 4}">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Enumeration Answers</label>
+            <div class="card">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <small class="text-muted">Add possible correct answers:</small>
+                  <button type="button" class="btn btn-sm btn-success add-enum-answer">
+                    <span class="material-icons">add</span> Add Answer
+                  </button>
+                </div>
+                <div class="enum-answers-list"></div>
+              </div>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Word Bank (optional; one per line)</label>
+            <textarea class="form-control enum-word-bank" rows="4" placeholder="If empty, answers are used as the word bank">${(q.word_bank||[]).join('\n')}</textarea>
+          </div>`;
+        
+        const answersList = extraDiv.querySelector('.enum-answers-list');
+        
+        function renderEnumAnswers() {
+          answersList.innerHTML = '';
+          q.correct_answers = q.correct_answers || [];
+          q.word_bank = q.word_bank || [];
+          
+          if (q.correct_answers.length === 0) {
+            answersList.innerHTML = '<div class="text-center text-muted p-3">No answers added yet. Click "Add Answer" to start.</div>';
+            return;
           }
+          
+          q.correct_answers.forEach((answer, index) => {
+            const answerDiv = document.createElement('div');
+            answerDiv.className = 'enum-answer-item d-flex align-items-center gap-2 mb-2';
+            answerDiv.innerHTML = `
+              <span class="badge bg-primary">${index + 1}</span>
+              <input type="text" class="form-control enum-answer-input" value="${answer}" placeholder="Enter answer option">
+              <button type="button" class="btn btn-sm btn-outline-danger remove-enum-answer">
+                <span class="material-icons">delete</span>
+              </button>`;
+            answersList.appendChild(answerDiv);
+            
+            // Event listeners
+            const input = answerDiv.querySelector('.enum-answer-input');
+            const removeBtn = answerDiv.querySelector('.remove-enum-answer');
+            
+            input.oninput = () => {
+              q.correct_answers[index] = input.value;
+            };
+            
+            removeBtn.onclick = () => {
+              q.correct_answers.splice(index, 1);
+              renderEnumAnswers();
+            };
+          });
+        }
+        
+        extraDiv.querySelector('.add-enum-answer').onclick = () => {
+          q.correct_answers = q.correct_answers || [];
+          q.correct_answers.push('');
+          renderEnumAnswers();
+          // Focus on the new input
+          setTimeout(() => {
+            const inputs = answersList.querySelectorAll('.enum-answer-input');
+            if (inputs.length > 0) {
+              inputs[inputs.length - 1].focus();
+            }
+          }, 100);
         };
-      });
+
+        const slotInput = extraDiv.querySelector('.enum-slot-count');
+        slotInput.oninput = () => {
+          const parsed = parseInt(slotInput.value || '4', 10);
+          const bounded = Math.min(4, Math.max(1, isNaN(parsed) ? 4 : parsed));
+          q.slot_count = bounded;
+          slotInput.value = bounded;
+        };
+
+        const wordBankInput = extraDiv.querySelector('.enum-word-bank');
+        wordBankInput.oninput = () => {
+          q.word_bank = wordBankInput.value.split('\n').map(v => v.trim()).filter(Boolean);
+        };
+        
+        renderEnumAnswers();
+      } else if (qt === 'problem_solving') {
+        extraDiv.innerHTML = `
+          <label class="form-label">Correct answer</label>
+          <input type="text" class="form-control ps-answer" value="${q.correct_answer||''}" placeholder="Enter the correct answer">`;
+        extraDiv.querySelector('.ps-answer').oninput = e => { q.correct_answer = e.target.value; };
+      } else if (qt === 'yes_no') {
+        // Yes/No questions automatically have Yes and No options
+        q.options = ['Yes', 'No'];
+        q.correct_answers = q.correct_answers || [];
+        
+        extraDiv.innerHTML = `
+          <div class="mb-3">
+            <label class="form-label">Correct Answer</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="yes_no_${q.id}" id="yes_${q.id}" value="Yes" ${q.correct_answers.includes('Yes') ? 'checked' : ''}>
+              <label class="form-check-label" for="yes_${q.id}">Yes</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="yes_no_${q.id}" id="no_${q.id}" value="No" ${q.correct_answers.includes('No') ? 'checked' : ''}>
+              <label class="form-check-label" for="no_${q.id}">No</label>
+            </div>
+          </div>`;
+        
+        extraDiv.querySelectorAll('input[type="radio"]').forEach(radio => {
+          radio.onchange = e => {
+            if (e.target.checked) {
+              q.correct_answers = [e.target.value];
+            }
+          };
+        });
+      }
+      // essay: nothing extra
     }
+    
+    typeSelect.onchange = () => { 
+      if (!selectedQuestionType) {
+        q.type = typeSelect.value; 
+        renderExtra(); 
+      } else {
+        // Reset to original type if locked
+        typeSelect.value = q.type;
+      }
+    };
+    card.querySelector('.question-text').oninput = e => { q.text = e.target.value; };
+    card.querySelector('.question-points').oninput = e => { q.points = parseInt(e.target.value)||1; };
+    card.querySelector('.help-video').oninput = e => { q.help_video_url = e.target.value; };
+    renderExtra();
   });
 }
 
@@ -442,7 +632,7 @@ function showAddAnotherButton(type) {
 // Function to reset and allow changing question type
 function resetQuestionType() {
   selectedQuestionType = null;
-  questions = [];
+  questions = []; // Clear all questions
   renderQuestions();
   
   // Reset all buttons to original state
@@ -481,67 +671,8 @@ function getButtonColor(type) {
 // Start with empty assignment
 renderQuestions();
 
-function collectQuestionsFromUI() {
-  const cards = document.querySelectorAll('.question-card');
-  questions = [];
-  cards.forEach((card, idx) => {
-    const text = card.querySelector('.question-text').value;
-    const type = card.querySelector('.question-type').value;
-    const difficulty = card.querySelector('.question-difficulty').value;
-    const points = parseInt(card.querySelector('.question-points').value) || 1;
-    const helpVideoUrl = card.querySelector('.help-video-url')?.value || '';
-    
-    let options = [];
-    let correct_answers = [];
-    let correct_answer = '';
-    
-    if (type === 'multiple_choice') {
-      options = Array.from(card.querySelectorAll('.option-input')).map(input => input.value);
-      // Collect checked options as correct answers
-      const checkedBoxes = card.querySelectorAll('.mcq-correct:checked');
-      checkedBoxes.forEach(checkbox => {
-        const optIndex = parseInt(checkbox.dataset.opt);
-        if (options[optIndex]) {
-          correct_answers.push(options[optIndex]);
-        }
-      });
-    } else if (type === 'identification' || type === 'problem_solving') {
-      const answerInput = card.querySelector('.identification-answer');
-      if (answerInput) {
-        correct_answer = answerInput.value;
-      }
-    } else if (type === 'fill_in_the_blanks' || type === 'enumeration') {
-      const answersInput = card.querySelector('.fill-answers');
-      if (answersInput) {
-        correct_answers = answersInput.value.split(',').map(a => a.trim()).filter(a => a);
-      }
-    } else if (type === 'yes_no') {
-      const yesnoSelect = card.querySelector('.yesno-correct');
-      if (yesnoSelect) {
-        correct_answer = yesnoSelect.value;
-        options = ['Yes', 'No'];
-      }
-    }
-    
-    const question = {
-      id: idx + 1,
-      text,
-      type,
-      difficulty,
-      points,
-      help_video_url: helpVideoUrl
-    };
-    
-    if (options.length > 0) question.options = options;
-    if (correct_answers.length > 0) question.correct_answers = correct_answers;
-    if (correct_answer) question.correct_answer = correct_answer;
-    
-    questions.push(question);
-  });
-}
-
 document.getElementById('assignmentForm').onsubmit = function(e){
-  collectQuestionsFromUI();
+  // embed questions JSON
   document.getElementById('questionsInput').value = JSON.stringify(questions);
 };
 </script>

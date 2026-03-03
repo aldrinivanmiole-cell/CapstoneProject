@@ -1,6 +1,6 @@
 # Flask + FastAPI Combined Application
 from flask import Flask, render_template, request, redirect, url_for, session, flash, make_response, send_file
-from fastapi import FastAPI, HTTPException, Form
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.wsgi import WSGIMiddleware
@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey,
 from sqlalchemy.orm import sessionmaker, relationship, joinedload
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import SQLAlchemyError
-import os, re, json, random, string, threading, io
+import os, json, random, string, threading
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -58,11 +58,143 @@ def require_login():
         return redirect(url_for("login"))
     return None
 
+def require_teacher_or_admin(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if not session.get("teacher_id") and not session.get("admin_id"):
+            return redirect(url_for("login"))
+        return func(*args, **kwargs)
+    return wrapper
+
 def success_response(data, message="Success"):
     return {"status": "success", "message": message, "data": data}
 
 def error_response(message, status_code=400):
     raise HTTPException(status_code=status_code, detail=message)
+
+def normalize_string_list(values):
+    if not isinstance(values, list):
+        return []
+
+    cleaned = []
+    seen = set()
+    for item in values:
+        text_value = str(item).strip() if item is not None else ""
+        if not text_value:
+            continue
+        key = text_value.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text_value)
+    return cleaned
+
+def parse_word_bank_json(word_bank_json):
+    if not word_bank_json:
+        return []
+    try:
+        parsed = json.loads(word_bank_json)
+        return normalize_string_list(parsed)
+    except Exception:
+        return []
+
+# ---- Common Database Operations ----
+def get_class_for_teacher(db, class_id, teacher_id=None, allow_admin=False):
+    """Get class that belongs to teacher, or any class if admin"""
+    if allow_admin and session.get("admin_id"):
+        return db.query(Class).filter_by(id=class_id).first()
+    elif teacher_id:
+        return db.query(Class).filter_by(id=class_id, teacher_id=teacher_id).first()
+    return None
+
+def validate_assignment_data(title, questions_json):
+    """Validate assignment creation data"""
+    if not title:
+        return False, "Assignment title is required"
+    
+    try:
+        questions_data = json.loads(questions_json)
+        if not questions_data:
+            return False, "At least one question is required"
+        return True, questions_data
+    except json.JSONDecodeError:
+        return False, "Invalid questions data"
+
+def create_question_with_answers(db, assignment_id, question_data):
+    """Create a question with its answers/options"""
+    q_text = question_data.get("text", "").strip()
+    q_type = question_data.get("type")
+    points = int(question_data.get("points", 1))
+    help_video_url = question_data.get("help_video_url", "").strip()
+
+    # Validate question type
+    valid_types = ["multiple_choice", "identification", "enumeration", "problem_solving", "essay", "fill_in_the_blanks", "yes_no"]
+    if not q_text or q_type not in valid_types:
+        return None
+
+    question = Question(
+        assignment_id=assignment_id,
+        question_text=q_text,
+        question_type=q_type,
+        points=points,
+        help_video_url=help_video_url,
+        slot_count=0,
+        word_bank_json=None
+    )
+    db.add(question)
+    db.flush()
+
+    # Add type-specific data
+    if q_type == "multiple_choice":
+        for opt in question_data.get("options", []):
+            if opt.strip():
+                db.add(QuestionOption(question_id=question.id, option_text=opt.strip()))
+        for ans in question_data.get("correct_answers", []):
+            if ans.strip():
+                db.add(CorrectAnswer(question_id=question.id, answer_text=ans.strip()))
+
+    elif q_type in ["identification", "problem_solving"]:
+        correct = question_data.get("correct_answer", "")
+        if not correct:
+            correct_answers = question_data.get("correct_answers", [])
+            correct = correct_answers[0] if correct_answers else ""
+        if correct.strip():
+            db.add(CorrectAnswer(question_id=question.id, answer_text=correct.strip()))
+
+    elif q_type in ["enumeration", "fill_in_the_blanks"]:
+        correct_answers = normalize_string_list(question_data.get("correct_answers", []))
+        for ans in correct_answers:
+            if ans.strip():
+                db.add(CorrectAnswer(question_id=question.id, answer_text=ans.strip()))
+
+        if q_type == "enumeration":
+            requested_slots = question_data.get("slot_count", len(correct_answers) or 1)
+            try:
+                requested_slots = int(requested_slots)
+            except Exception:
+                requested_slots = len(correct_answers) or 1
+            question.slot_count = max(1, min(4, requested_slots))
+
+            word_bank = normalize_string_list(question_data.get("word_bank", []))
+            if not word_bank:
+                word_bank = list(correct_answers)
+            question.word_bank_json = json.dumps(word_bank)
+
+    elif q_type == "yes_no":
+        # Add Yes/No options
+        for opt in question_data.get("options", ["Yes", "No"]):
+            if opt.strip():
+                db.add(QuestionOption(question_id=question.id, option_text=opt.strip()))
+        
+        # Add correct answer
+        correct_answer = question_data.get("correct_answer", "")
+        if not correct_answer:
+            correct_answers = question_data.get("correct_answers", [])
+            correct_answer = correct_answers[0] if correct_answers else ""
+        if correct_answer.strip():
+            db.add(CorrectAnswer(question_id=question.id, answer_text=correct_answer.strip()))
+
+    return question
 
 # ---- API Access Guard ----
 def api_guard(db):
@@ -131,10 +263,11 @@ class Question(Base):
     id = Column(Integer, primary_key=True)
     assignment_id = Column(Integer, ForeignKey("assignments.id", ondelete="CASCADE"), nullable=False)
     question_text = Column(Text, nullable=False)
-    question_type = Column(String(20), nullable=False)  # multiple_choice, yes_no, identification, fill_in_the_blanks, problem_solving, enumeration, essay
+    question_type = Column(String(20), nullable=False)  # multiple_choice, essay, short_answer
     points = Column(Integer, default=1)
     help_video_url = Column(String(255))  # YouTube or other video URL
-    difficulty = Column(String(10), default="easy")  # easy, medium, hard
+    slot_count = Column(Integer, default=0)
+    word_bank_json = Column(Text)
     assignment = relationship("Assignment", back_populates="questions")
     options = relationship("QuestionOption", back_populates="question", cascade="all, delete-orphan")
     correct_answers = relationship("CorrectAnswer", back_populates="question", cascade="all, delete-orphan")
@@ -160,13 +293,6 @@ class Student(Base):
     name = Column(String(100), nullable=False)
     email = Column(String(120), unique=True, nullable=False)
     password_hash = Column(String(255))  # Store hashed password
-    # Unity-specific fields
-    username = Column(String(100), unique=True)  # Username for Unity login
-    fname = Column(String(50))  # First name
-    mname = Column(String(50))  # Middle name
-    lname = Column(String(50))  # Last name
-    gender = Column(String(20))  # Gender (Male/Female)
-    # Mobile app fields
     device_id = Column(String(255))  # Unique device identifier for mobile app
     grade_level = Column(String(20))  # e.g., "Grade 1", "Grade 2", etc.
     avatar_url = Column(String(500))  # Profile picture for gamification
@@ -174,8 +300,6 @@ class Student(Base):
     last_active = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
     enrollments = relationship("Enrollment", back_populates="student", cascade="all, delete-orphan")
-    history_entries = relationship("StudentHistory", back_populates="student", cascade="all, delete-orphan")
-    feedbacks = relationship("Feedback", back_populates="student", cascade="all, delete-orphan")
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -215,59 +339,6 @@ class StudentAnswer(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     submission = relationship("AssignmentSubmission")
     question = relationship("Question")
-
-# Unity-specific tables
-class StudentHistory(Base):
-    """Track student answers and question history for Unity app"""
-    __tablename__ = "student_history"
-    id = Column(Integer, primary_key=True)
-    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
-    assignment_id = Column(Integer, ForeignKey("assignments.id", ondelete="CASCADE"), nullable=False)
-    question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False)
-    question_text = Column(Text)  # Store question for reference
-    student_answer = Column(Text)
-    correct_answer = Column(Text)
-    is_correct = Column(Integer, default=0)  # 0 = wrong, 1 = correct
-    answered_at = Column(DateTime, default=datetime.utcnow)
-    student = relationship("Student", back_populates="history_entries")
-    assignment = relationship("Assignment")
-    question = relationship("Question")
-
-class Feedback(Base):
-    """Student feedback system for Unity app"""
-    __tablename__ = "feedback"
-    id = Column(Integer, primary_key=True)
-    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
-    teacher_id = Column(Integer, ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True)
-    message = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    student = relationship("Student", back_populates="feedbacks")
-    teacher = relationship("Teacher")
-    replies = relationship("FeedbackReply", back_populates="feedback", cascade="all, delete-orphan")
-
-class FeedbackReply(Base):
-    """Teacher replies to student feedback"""
-    __tablename__ = "feedback_replies"
-    id = Column(Integer, primary_key=True)
-    feedback_id = Column(Integer, ForeignKey("feedback.id", ondelete="CASCADE"), nullable=False)
-    teacher_id = Column(Integer, ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False)
-    reply_message = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    feedback = relationship("Feedback", back_populates="replies")
-    teacher = relationship("Teacher")
-
-class AssignmentProgress(Base):
-    """Track Unity/Mobile app assignment progress for resume functionality"""
-    __tablename__ = "assignment_progress"
-    id = Column(Integer, primary_key=True)
-    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
-    assignment_id = Column(Integer, ForeignKey("assignments.id", ondelete="CASCADE"), nullable=False)
-    current_question_index = Column(Integer, default=0)
-    answers_json = Column(Text)  # JSON string of answered questions
-    locked_questions_json = Column(Text)  # JSON array of locked question indices
-    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    student = relationship("Student")
-    assignment = relationship("Assignment")
 
 class Admin(Base):
     __tablename__ = "admins"
@@ -321,6 +392,7 @@ def upgrade_schema():
         insp = inspect(engine)
         class_cols = {c['name'] for c in insp.get_columns('classes')}
         assign_cols = {c['name'] for c in insp.get_columns('assignments')}
+        question_cols = {c['name'] for c in insp.get_columns('questions')}
         with engine.begin() as conn:
             if 'is_archived' not in class_cols:
                 conn.execute(text("ALTER TABLE classes ADD COLUMN is_archived BOOLEAN DEFAULT 0"))
@@ -334,6 +406,12 @@ def upgrade_schema():
             if 'archived_at' not in assign_cols:
                 conn.execute(text("ALTER TABLE assignments ADD COLUMN archived_at DATETIME"))
                 print("Added column assignments.archived_at")
+            if 'slot_count' not in question_cols:
+                conn.execute(text("ALTER TABLE questions ADD COLUMN slot_count INTEGER DEFAULT 0"))
+                print("Added column questions.slot_count")
+            if 'word_bank_json' not in question_cols:
+                conn.execute(text("ALTER TABLE questions ADD COLUMN word_bank_json TEXT"))
+                print("Added column questions.word_bank_json")
         # Ensure admins and app_settings tables exist
         Base.metadata.create_all(bind=engine, tables=[Admin.__table__, AppSetting.__table__])
     except Exception as e:
@@ -560,8 +638,7 @@ def get_assignment_for_game(assignment_id: int):
                 "question_text": q.question_text,  # Unity expects question_text, not text
                 "question_type": q.question_type,  # Unity expects question_type, not type
                 "points": q.points,
-                "help_video_url": q.help_video_url,
-                "difficulty": getattr(q, 'difficulty', 'easy')  # Default to easy if not set
+                "help_video_url": q.help_video_url
             }
             
             # Add options for multiple choice and yes_no questions
@@ -808,6 +885,144 @@ def login_student(login_data: dict):
     finally:
         db.close()
 
+@api.post("/teacher/register", summary="Register Teacher for Load Testing")
+def register_teacher_api(teacher_data: dict):
+    db = SessionLocal()
+    try:
+        email = teacher_data.get("email", "").strip()
+        password = teacher_data.get("password", "").strip()
+        first_name = teacher_data.get("first_name", "").strip()
+        last_name = teacher_data.get("last_name", "").strip()
+        
+        if not all([email, password, first_name, last_name]):
+            raise HTTPException(status_code=400, detail="All fields are required")
+        
+        # Check if teacher already exists
+        existing = db.query(Teacher).filter_by(email=email).first()
+        if existing:
+            return {
+                "status": "success",
+                "teacher_id": existing.id,
+                "message": "Teacher already exists"
+            }
+        
+        # Create new teacher
+        teacher = Teacher(email=email, first_name=first_name, last_name=last_name)
+        teacher.set_password(password)
+        db.add(teacher)
+        db.commit()
+        
+        return {
+            "status": "success",
+            "teacher_id": teacher.id,
+            "email": teacher.email,
+            "name": teacher.full_name,
+            "message": "Teacher registered successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.post("/classroom/create", summary="Create Classroom for Load Testing")
+def create_classroom_api(classroom_data: dict):
+    db = SessionLocal()
+    try:
+        teacher_id = classroom_data.get("teacher_id")
+        name = classroom_data.get("name", "").strip()
+        section = classroom_data.get("section", "").strip()
+        
+        if not all([teacher_id, name]):
+            raise HTTPException(status_code=400, detail="Teacher ID and class name are required")
+        
+        # Check if teacher exists
+        teacher = db.query(Teacher).filter_by(id=teacher_id).first()
+        if not teacher:
+            raise HTTPException(status_code=404, detail="Teacher not found")
+        
+        # Create new class
+        new_class = Class(
+            name=name,
+            section=section if section else None,
+            class_code=generate_class_code(),
+            teacher_id=teacher_id
+        )
+        db.add(new_class)
+        db.commit()
+        
+        return {
+            "status": "success",
+            "class_id": new_class.id,
+            "class_code": new_class.class_code,
+            "name": new_class.name,
+            "section": new_class.section,
+            "teacher": teacher.full_name,
+            "message": "Classroom created successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.post("/classroom/generate", summary="Generate Multiple Classrooms")
+def generate_classrooms_api(generation_data: dict):
+    db = SessionLocal()
+    try:
+        count = generation_data.get("count", 10)
+        if count > 100:
+            count = 100  # Limit to prevent abuse
+        
+        # Get or create a default teacher
+        teacher = db.query(Teacher).first()
+        if not teacher:
+            teacher = Teacher(
+                email="loadtest@example.com",
+                first_name="Load",
+                last_name="Test"
+            )
+            teacher.set_password("password123")
+            db.add(teacher)
+            db.flush()
+        
+        created_classes = []
+        subjects = ["Math", "Science", "English", "History", "Art", "Music", "PE", "Computer Science"]
+        
+        for i in range(count):
+            subject = subjects[i % len(subjects)]
+            new_class = Class(
+                name=f"{subject} {i+1}",
+                section=f"Section {(i % 5) + 1}",
+                class_code=generate_class_code(),
+                teacher_id=teacher.id
+            )
+            db.add(new_class)
+            created_classes.append({
+                "name": new_class.name,
+                "section": new_class.section,
+                "class_code": new_class.class_code
+            })
+        
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": f"Successfully generated {count} classrooms",
+            "count": count,
+            "teacher": teacher.full_name,
+            "classes": created_classes
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
 @api.post("/student/join-class", summary="Join Class with Code")
 def join_class_with_code(join_data: dict):
     db = SessionLocal()
@@ -866,925 +1081,6 @@ def join_class_with_code(join_data: dict):
     finally:
         db.close()
 
-# ============================================
-# UNITY APP COMPATIBILITY ENDPOINTS
-# These endpoints match the PHP API that the Unity app expects
-# ============================================
-
-@api.post("/login", summary="Unity Login")
-@api.post("/login.php", summary="Unity Login (PHP-compatible)")
-def unity_login(username: str = Form(...), password: str = Form(...)):
-    """Unity-compatible login endpoint. Returns: {status, id, username, gender}"""
-    db = SessionLocal()
-    try:
-        username = username.strip()
-        password = password.strip()
-        
-        if not all([username, password]):
-            return {"status": "ERROR", "message": "Username and password required"}
-        
-        # Try username first, then email
-        student = db.query(Student).filter(
-            (Student.username == username) | (Student.email == username)
-        ).first()
-        
-        if not student or not student.check_password(password):
-            return {"status": "ERROR", "message": "Invalid credentials"}
-        
-        # Update last active
-        student.last_active = datetime.utcnow()
-        db.commit()
-        
-        return {
-            "status": "SUCCESS",
-            "id": str(student.id),
-            "username": student.username or student.email,
-            "gender": student.gender or "Male"
-        }
-    except Exception as e:
-        db.rollback()
-        return {"status": "ERROR", "message": str(e)}
-    finally:
-        db.close()
-
-@api.post("/register", summary="Unity Register")
-@api.post("/registers.php", summary="Unity Register (PHP-compatible)")
-def unity_register(
-    fname: str = Form(...),
-    mname: str = Form(""),
-    lname: str = Form(...),
-    gender: str = Form(""),
-    username: str = Form(...),
-    password: str = Form(...)
-):
-    """Unity-compatible registration. Accepts: fname, mname, lname, gender, username, password"""
-    db = SessionLocal()
-    try:
-        fname = fname.strip()
-        mname = mname.strip()
-        lname = lname.strip()
-        gender = gender.strip()
-        username = username.strip()
-        password = password.strip()
-        
-        if not all([fname, lname, username, password]):
-            return {"status": "ERROR", "message": "Required fields missing"}
-        
-        # Check if username already exists
-        existing = db.query(Student).filter(
-            (Student.username == username) | (Student.email == username)
-        ).first()
-        if existing:
-            return {"status": "EXISTS", "message": "Username already exists"}
-        
-        # Create new student
-        full_name = f"{fname} {mname} {lname}".replace("  ", " ").strip()
-        student = Student(
-            fname=fname,
-            mname=mname,
-            lname=lname,
-            name=full_name,
-            gender=gender,
-            username=username,
-            email=f"{username}@student.local",  # Generate email from username
-        )
-        student.set_password(password)
-        
-        db.add(student)
-        db.commit()
-        db.refresh(student)
-        
-        return {
-            "status": "SUCCESS",
-            "id": str(student.id),
-            "username": student.username,
-            "gender": student.gender or "Male",
-            "message": "Registration successful"
-        }
-    except Exception as e:
-        db.rollback()
-        return {"status": "ERROR", "message": str(e)}
-    finally:
-        db.close()
-
-@api.get("/get_questions", summary="Get Multiple Choice Questions")
-@api.get("/get_questions.php", summary="Get Multiple Choice Questions (Legacy)")
-def get_multiple_choice_questions(student_id: int, class_id: int = None, assignment_id: int = None):
-    """Get multiple choice questions for student, optionally filtered by class or assignment"""
-    db = SessionLocal()
-    try:
-        # Get student's enrolled classes
-        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
-        if not enrollments:
-            return []
-        
-        # Filter by specific assignment if provided
-        if assignment_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.id == assignment_id,
-                Assignment.is_archived == False
-            ).all()
-        elif class_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id == class_id,
-                Assignment.is_archived == False
-            ).all()
-        else:
-            class_ids = [e.class_id for e in enrollments]
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id.in_(class_ids),
-                Assignment.is_archived == False
-            ).all()
-        
-        questions_list = []
-        for assignment in assignments:
-            for question in assignment.questions:
-                if question.question_type == "multiple_choice":
-                    choices = []
-                    for option in question.options:
-                        choices.append({
-                            "answer_description": option.option_text,
-                            "correct_answer": 1 if option.is_correct else 0
-                        })
-                    
-                    questions_list.append({
-                        "id": question.id,
-                        "assignment_id": assignment.id,  # Include assignment_id
-                        "question_description": question.question_text,
-                        "tutorial_link": question.help_video_url or "",
-                        "choices": choices
-                    })
-        
-        return questions_list
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
-@api.get("/get_multiple_choice", summary="Get Multiple Choice Questions (Indiana Jones Game)")
-def get_multiple_choice_for_game(assignment_id: int):
-    """Get multiple choice questions for the Indiana Jones treasure hunt game"""
-    db = SessionLocal()
-    try:
-        # Get assignment
-        assignment = db.query(Assignment).filter(
-            Assignment.id == assignment_id,
-            Assignment.is_archived == False
-        ).first()
-        
-        if not assignment:
-            return {"questions": []}
-        
-        questions_list = []
-        for question in assignment.questions:
-            if question.question_type == "multiple_choice":
-                answers = []
-                for option in question.options:
-                    answers.append({
-                        "answer_id": option.id,
-                        "answer_text": option.option_text,
-                        "correct_answer": 1 if option.is_correct else 0
-                    })
-                
-                questions_list.append({
-                    "question_id": question.id,
-                    "question_text": question.question_text,
-                    "answers": answers
-                })
-        
-        return {"questions": questions_list}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
-@api.get("/get_essay", summary="Get Essay Questions")
-@api.get("/get_essay.php", summary="Get Essay Questions (Legacy)")
-def get_essay_questions(student_id: int, class_id: int = None, assignment_id: int = None):
-    """Get essay questions for student, optionally filtered by class or assignment"""
-    db = SessionLocal()
-    try:
-        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
-        if not enrollments:
-            return []
-        
-        if assignment_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.id == assignment_id,
-                Assignment.is_archived == False
-            ).all()
-        elif class_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id == class_id,
-                Assignment.is_archived == False
-            ).all()
-        else:
-            class_ids = [e.class_id for e in enrollments]
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id.in_(class_ids),
-                Assignment.is_archived == False
-            ).all()
-        
-        questions_list = []
-        for assignment in assignments:
-            for question in assignment.questions:
-                if question.question_type == "essay":
-                    questions_list.append({
-                        "id": question.id,
-                        "assignment_id": assignment.id,
-                        "question_description": question.question_text,
-                        "tutorial_link": question.help_video_url or ""
-                    })
-        
-        return questions_list
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
-@api.get("/get_fib", summary="Get Fill in the Blank Questions")
-@api.get("/get_fib.php", summary="Get Fill in the Blank Questions (Legacy)")
-def get_fib_questions(student_id: int, class_id: int = None, assignment_id: int = None):
-    """Get fill-in-the-blank questions, optionally filtered by class or assignment"""
-    db = SessionLocal()
-    try:
-        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
-        if not enrollments:
-            return []
-        
-        if assignment_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.id == assignment_id,
-                Assignment.is_archived == False
-            ).all()
-        elif class_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id == class_id,
-                Assignment.is_archived == False
-            ).all()
-        else:
-            class_ids = [e.class_id for e in enrollments]
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id.in_(class_ids),
-                Assignment.is_archived == False
-            ).all()
-        
-        questions_list = []
-        for assignment in assignments:
-            for question in assignment.questions:
-                if question.question_type == "fill_in_the_blanks":
-                    # Get all correct answers as a list for multiple blanks
-                    answers = [{"answer_description": ca.answer_text, "correct_answer": 1} 
-                              for ca in question.correct_answers]
-                    
-                    questions_list.append({
-                        "id": question.id,
-                        "assignment_id": assignment.id,
-                        "question_description": question.question_text,
-                        "answers": answers
-                    })
-        
-        return questions_list
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
-@api.get("/get_enumeration", summary="Get Enumeration Questions")
-@api.get("/get_enumeration.php", summary="Get Enumeration Questions (Legacy)")
-def get_enumeration_questions(student_id: int, class_id: int = None, assignment_id: int = None):
-    """Get enumeration questions for student, optionally filtered by class or assignment"""
-    db = SessionLocal()
-    try:
-        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
-        if not enrollments:
-            return []
-        
-        if assignment_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.id == assignment_id,
-                Assignment.is_archived == False
-            ).all()
-        elif class_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id == class_id,
-                Assignment.is_archived == False
-            ).all()
-        else:
-            class_ids = [e.class_id for e in enrollments]
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id.in_(class_ids),
-                Assignment.is_archived == False
-            ).all()
-        
-        questions_list = []
-        for assignment in assignments:
-            for question in assignment.questions:
-                if question.question_type == "enumeration":  # Only enumeration questions
-                    # Build answers array with correct answers marked
-                    answers_array = []
-                    
-                    # Get all correct answers from database
-                    if question.correct_answers:
-                        for correct_ans in question.correct_answers:
-                            answers_array.append({
-                                "answer_description": correct_ans.answer_text,
-                                "correct_answer": 1
-                            })
-                    
-                    questions_list.append({
-                        "id": question.id,
-                        "assignment_id": assignment.id,
-                        "question_description": question.question_text,
-                        "answers": answers_array,
-                        "tutorial_link": question.help_video_url or ""
-                    })
-        
-        return questions_list
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
-@api.get("/get_identification", summary="Get Identification Questions")
-@api.get("/get_identification.php", summary="Get Identification Questions (Legacy)")
-def get_identification_questions(student_id: int, class_id: int = None, assignment_id: int = None):
-    """Get identification questions for student, optionally filtered by class or assignment"""
-    db = SessionLocal()
-    try:
-        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
-        if not enrollments:
-            return []
-        
-        if assignment_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.id == assignment_id,
-                Assignment.is_archived == False
-            ).all()
-        elif class_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id == class_id,
-                Assignment.is_archived == False
-            ).all()
-        else:
-            class_ids = [e.class_id for e in enrollments]
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id.in_(class_ids),
-                Assignment.is_archived == False
-            ).all()
-        
-        questions_list = []
-        for assignment in assignments:
-            for question in assignment.questions:
-                if question.question_type == "identification":  # Only identification questions
-                    correct_answer = ""
-                    if question.correct_answers:
-                        correct_answer = question.correct_answers[0].answer_text
-                    
-                    # Build answers array with correct answer marked
-                    answers = [{
-                        "answer_description": correct_answer,
-                        "correct_answer": 1
-                    }]
-                    
-                    questions_list.append({
-                        "id": question.id,
-                        "assignment_id": assignment.id,
-                        "question_description": question.question_text,
-                        "answers": answers,
-                        "tutorial_link": question.help_video_url or ""
-                    })
-        
-        return questions_list
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
-@api.get("/get_yesno", summary="Get Yes/No Questions")
-@api.get("/get_yesno.php", summary="Get Yes/No Questions (Legacy)")
-def get_yesno_questions(student_id: int, class_id: int = None, assignment_id: int = None):
-    """Get yes/no (true/false) questions for student, optionally filtered by class or assignment"""
-    db = SessionLocal()
-    try:
-        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
-        if not enrollments:
-            return []
-        
-        if assignment_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.id == assignment_id,
-                Assignment.is_archived == False
-            ).all()
-        elif class_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id == class_id,
-                Assignment.is_archived == False
-            ).all()
-        else:
-            class_ids = [e.class_id for e in enrollments]
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id.in_(class_ids),
-                Assignment.is_archived == False
-            ).all()
-        
-        questions_list = []
-        for assignment in assignments:
-            for question in assignment.questions:
-                if question.question_type == "yes_no":  # Only yes/no questions
-                    correct_answer = ""
-                    if question.correct_answers:
-                        correct_answer = question.correct_answers[0].answer_text
-                    
-                    # Normalize answer format (convert Yes/No to True/False)
-                    if correct_answer.lower() == "yes":
-                        correct_answer = "True"
-                    elif correct_answer.lower() == "no":
-                        correct_answer = "False"
-                    
-                    # Build answers array with True/False options
-                    answers = []
-                    for option in ["True", "False"]:
-                        answers.append({
-                            "answer_description": option,
-                            "correct_answer": 1 if option == correct_answer else 0
-                        })
-                    
-                    questions_list.append({
-                        "id": question.id,
-                        "assignment_id": assignment.id,
-                        "question_description": question.question_text,
-                        "answers": answers,
-                        "tutorial_link": question.help_video_url or ""
-                    })
-        
-        return questions_list
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
-@api.get("/get_problems", summary="Get Problem Solving Questions")
-@api.get("/get_problems.php", summary="Get Problem Solving Questions (Legacy)")
-def get_problem_questions(student_id: int, class_id: int = None, assignment_id: int = None):
-    """Get problem solving questions for student, optionally filtered by class or assignment"""
-    db = SessionLocal()
-    try:
-        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
-        if not enrollments:
-            return []
-        
-        if assignment_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.id == assignment_id,
-                Assignment.is_archived == False
-            ).all()
-        elif class_id:
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id == class_id,
-                Assignment.is_archived == False
-            ).all()
-        else:
-            class_ids = [e.class_id for e in enrollments]
-            assignments = db.query(Assignment).filter(
-                Assignment.class_id.in_(class_ids),
-                Assignment.is_archived == False
-            ).all()
-        
-        questions_list = []
-        for assignment in assignments:
-            for question in assignment.questions:
-                if question.question_type == "problem_solving":  # Only problem solving questions
-                    correct_answer = ""
-                    if question.correct_answers:
-                        correct_answer = question.correct_answers[0].answer_text
-                    
-                    questions_list.append({
-                        "id": question.id,
-                        "assignment_id": assignment.id,
-                        "question_description": question.question_text,
-                        "correct_answer": correct_answer,
-                        "tutorial_link": question.help_video_url or ""
-                    })
-        
-        return questions_list
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
-@api.post("/save_history", summary="Save Student Answer History")
-@api.post("/save_history.php", summary="Save Student Answer History (Legacy)")
-def save_student_history(
-    student_id: int = Form(...),
-    assignment_id: int = Form(...),
-    question_id: int = Form(...),
-    question_text: str = Form(""),
-    student_answer: str = Form(""),
-    correct_answer: str = Form(""),
-    is_correct: int = Form(0)
-):
-    """Save student answer to history"""
-    db = SessionLocal()
-    try:
-        
-        history_entry = StudentHistory(
-            student_id=student_id,
-            assignment_id=assignment_id,
-            question_id=question_id,
-            question_text=question_text,
-            student_answer=student_answer,
-            correct_answer=correct_answer,
-            is_correct=is_correct
-        )
-        
-        db.add(history_entry)
-        db.commit()
-        
-        return {"status": "success", "message": "History saved"}
-    except Exception as e:
-        db.rollback()
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
-@api.post("/submit_score", summary="Submit Student Score")
-@api.post("/submit_score.php", summary="Submit Student Score (Legacy)")
-@api.post("/submit_score2", summary="Submit Student Score Alt")
-@api.post("/submit_score2.php", summary="Submit Student Score Alt (Legacy)")
-def submit_student_score(
-    student_id: int = Form(...),
-    assignment_id: int = Form(...),
-    score: int = Form(0)
-):
-    """Submit student's score for an assignment"""
-    db = SessionLocal()
-    try:
-        
-        if not all([student_id, assignment_id is not None]):
-            return {"status": "error", "message": "Missing required fields"}
-        
-        # Check if submission already exists
-        existing = db.query(AssignmentSubmission).filter_by(
-            student_id=student_id,
-            assignment_id=assignment_id
-        ).first()
-        
-        if existing:
-            # Update existing submission
-            existing.score = score
-            existing.submitted_at = datetime.utcnow()
-        else:
-            # Create new submission
-            submission = AssignmentSubmission(
-                student_id=student_id,
-                assignment_id=assignment_id,
-                score=score,
-                total_points=100
-            )
-            db.add(submission)
-        
-        # Update student total points
-        student = db.query(Student).filter_by(id=student_id).first()
-        if student:
-            student.total_points += int(score)
-        
-        db.commit()
-        
-        return {"status": "success", "message": "Score saved successfully"}
-    except Exception as e:
-        db.rollback()
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
-@api.post("/submit_essay", summary="Submit Essay Answer")
-@api.post("/submit_essay.php", summary="Submit Essay Answer (Legacy)")
-def submit_essay_answer(essay_data: dict):
-    """Submit essay answer for review"""
-    db = SessionLocal()
-    try:
-        student_id = essay_data.get("student_id")
-        assignment_id = essay_data.get("assignment_id")
-        answer_text = essay_data.get("answer_text", "")
-        
-        # Create or update submission
-        submission = db.query(AssignmentSubmission).filter_by(
-            student_id=student_id,
-            assignment_id=assignment_id
-        ).first()
-        
-        if not submission:
-            submission = AssignmentSubmission(
-                student_id=student_id,
-                assignment_id=assignment_id,
-                answers_json=json.dumps({"essay": answer_text})
-            )
-            db.add(submission)
-        else:
-            submission.answers_json = json.dumps({"essay": answer_text})
-            submission.submitted_at = datetime.utcnow()
-        
-        db.commit()
-        
-        return {"status": "success", "message": "Essay submitted successfully"}
-    except Exception as e:
-        db.rollback()
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
-@api.get("/get_class_info", summary="Get Class Information")
-def get_class_info(class_id: int):
-    """Get class information including teacher_id"""
-    db = SessionLocal()
-    try:
-        api_guard(db)
-        
-        class_ = db.query(Class).filter_by(id=class_id).first()
-        if not class_:
-            raise HTTPException(status_code=404, detail="Class not found")
-        
-        return {
-            "teacher_id": class_.teacher_id,
-            "class_name": class_.name,
-            "section": class_.section
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
-@api.post("/save_feedback", summary="Save Student Feedback")
-@api.post("/save_feedback.php", summary="Save Student Feedback (Legacy)")
-def save_student_feedback(
-    student_id: int = Form(...),
-    message: str = Form(...),
-    teacher_id: int = Form(None)
-):
-    """Save student feedback message"""
-    db = SessionLocal()
-    try:
-        print(f"📨 Received feedback - Student ID: {student_id}, Message: {message[:50]}...")
-        
-        if not student_id or not message.strip():
-            error_msg = "Student ID and message required"
-            print(f"❌ Validation error: {error_msg}")
-            return {"status": "error", "message": error_msg}
-        
-        feedback = Feedback(
-            student_id=student_id,
-            teacher_id=teacher_id,
-            message=message.strip()
-        )
-        
-        db.add(feedback)
-        db.commit()
-        db.refresh(feedback)
-        
-        print(f"✅ Feedback saved successfully! ID: {feedback.id}, Student: {student_id}")
-        
-        return {"status": "success", "message": "Feedback submitted successfully"}
-    except Exception as e:
-        db.rollback()
-        print(f"❌ Error saving feedback: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
-@api.get("/get_feedback_reply", summary="Get Feedback Replies")
-@api.get("/get_feedback_reply.php", summary="Get Feedback Replies (Legacy)")
-def get_feedback_replies(student_id: int):
-    """Get feedback and replies for a student"""
-    db = SessionLocal()
-    try:
-        feedbacks = db.query(Feedback).filter_by(student_id=student_id).order_by(Feedback.created_at.desc()).all()
-        
-        result = []
-        for feedback in feedbacks:
-            replies = []
-            for reply in feedback.replies:
-                teacher = reply.teacher
-                replies.append({
-                    "reply_message": reply.reply_message,
-                    "teacher_name": f"{teacher.first_name} {teacher.last_name}" if teacher else "Teacher",
-                    "created_at": reply.created_at.isoformat() if reply.created_at else ""
-                })
-            
-            result.append({
-                "id": feedback.id,
-                "message": feedback.message,
-                "created_at": feedback.created_at.isoformat() if feedback.created_at else "",
-                "replies": replies
-            })
-        
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
-
-@api.get("/get_link", summary="Get Tutorial Link")
-@api.get("/get_link.php", summary="Get Tutorial Link (Legacy)")
-def get_tutorial_link(question_id: int):
-    """Get tutorial link for a question"""
-    db = SessionLocal()
-    try:
-        question = db.query(Question).filter_by(id=question_id).first()
-        if not question:
-            return {"status": "error", "message": "Question not found"}
-        
-        return {
-            "status": "success",
-            "link": question.help_video_url or "",
-            "question_text": question.question_text
-        }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
-@api.get("/get_history", summary="Get Student History")
-@api.get("/get_history.php", summary="Get Student History (Legacy)")
-def get_student_history(student_id: int):
-    """Get all question history for a student"""
-    db = SessionLocal()
-    try:
-        history = db.query(StudentHistory).filter_by(student_id=student_id).all()
-        
-        history_list = []
-        for item in history:
-            question = db.query(Question).filter_by(id=item.question_id).first()
-            history_list.append({
-                "id": item.id,
-                "question_description": question.question_text if question else "Unknown question",
-                "player_answer": item.student_answer or "",
-                "correct_answer": item.correct_answer or "",
-                "is_correct": 1 if item.is_correct else 0
-            })
-        
-        return history_list
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
-@api.get("/get_score", summary="Get Student Total Score")
-@api.get("/get_score.php", summary="Get Student Total Score (Legacy)")
-def get_student_score(student_id: int):
-    """Get total score/statistics for a student"""
-    db = SessionLocal()
-    try:
-        # Count correct answers
-        total_correct = db.query(StudentHistory).filter_by(
-            student_id=student_id,
-            is_correct=True
-        ).count()
-        
-        # Count total attempts
-        total_attempts = db.query(StudentHistory).filter_by(student_id=student_id).count()
-        
-        # Calculate percentage
-        percentage = (total_correct * 100 // total_attempts) if total_attempts > 0 else 0
-        
-        return f"Score: {total_correct}/{total_attempts} ({percentage}%)"
-    except Exception as e:
-        return "Score: 0/0 (0%)"
-    finally:
-        db.close()
-
-@api.get("/get_classrooms", summary="Get Student's Classrooms")
-@api.get("/get_classrooms.php", summary="Get Student's Classrooms (Legacy)")
-def get_student_classrooms(student_id: int):
-    """Get all classes a student is enrolled in"""
-    db = SessionLocal()
-    try:
-        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
-        
-        classrooms = []
-        room_counter = 1  # Start from room 1
-        for enrollment in enrollments:
-            class_obj = db.query(Class).filter_by(id=enrollment.class_id).first()
-            if class_obj:
-                # Unity expects: room_no, class_id, description
-                classrooms.append({
-                    "room_no": room_counter,  # Sequential room numbers 1-10
-                    "class_id": class_obj.id,
-                    "description": f"{class_obj.name} - {class_obj.section}" if class_obj.section else class_obj.name
-                })
-                room_counter += 1
-        
-        return classrooms
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
-@api.get("/get_assignment_types", summary="Get Assignment Types for Class")
-@api.get("/get_assignment_types.php", summary="Get Assignment Types for Class (Legacy)")
-def get_assignment_types(class_id: int, student_id: int = None):
-    """Get all assignments in a class, each treated as a unique category"""
-    db = SessionLocal()
-    try:
-        # Get all assignments in this class (non-archived)
-        assignments = db.query(Assignment).filter(
-            Assignment.class_id == class_id,
-            Assignment.is_archived == False
-        ).all()
-        
-        # Map question_type to Unity-friendly names
-        type_mapping = {
-            "multiple_choice": "Multiple Choice",
-            "essay": "Essay",
-            "identification": "Identification",
-            "enumeration": "Enumeration",
-            "yes_no": "True/False",
-            "fill_in_the_blanks": "Fill in the Blanks",
-            "problem_solving": "Problem Solving"
-        }
-        
-        categories = []
-        for assignment in assignments:
-            # Get the dominant question type for this assignment
-            question_types = db.query(Question.question_type).filter(
-                Question.assignment_id == assignment.id
-            ).distinct().all()
-            
-            if not question_types:
-                continue
-            
-            # Use the first question type as the primary type
-            primary_type = question_types[0][0]
-            type_display = type_mapping.get(primary_type, primary_type.replace("_", " ").title())
-            
-            # Create unique description with assignment title
-            description = f"{assignment.title} ({type_display})"
-            
-            # Check if student has completed THIS specific assignment
-            is_completed = False
-            if student_id:
-                submission = db.query(AssignmentSubmission).filter(
-                    AssignmentSubmission.student_id == student_id,
-                    AssignmentSubmission.assignment_id == assignment.id
-                ).first()
-                is_completed = submission is not None
-            
-            categories.append({
-                "category_id": assignment.id,  # Use assignment ID as category ID
-                "description": description,
-                "is_completed": is_completed,
-                "question_type": primary_type  # Include for filtering
-            })
-        
-        return categories
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
-@api.post("/save_classroom", summary="Save Student Classroom Selection")
-@api.post("/save_classroom.php", summary="Save Student Classroom Selection (Legacy)")
-def save_classroom_selection(student_id: int = Form(...), code: str = Form(...), room_no: int = Form(...)):
-    """Enroll student in class using class code"""
-    db = SessionLocal()
-    try:
-        # Find class by code
-        class_obj = db.query(Class).filter_by(class_code=code).first()
-        
-        if not class_obj:
-            return {"status": "error", "message": "Invalid class code"}
-        
-        # Check if already enrolled
-        existing = db.query(Enrollment).filter_by(
-            student_id=student_id,
-            class_id=class_obj.id
-        ).first()
-        
-        if existing:
-            return {"status": "success", "message": "Already enrolled"}
-        
-        # Create enrollment
-        enrollment = Enrollment(
-            student_id=student_id,
-            class_id=class_obj.id
-        )
-        db.add(enrollment)
-        db.commit()
-        
-        return {
-            "status": "success",
-            "message": f"Successfully joined {class_obj.name}"
-        }
-    except Exception as e:
-        db.rollback()
-        return {"status": "error", "message": str(e)}
-    finally:
-        db.close()
-
 @api.post("/submit/{assignment_id}", summary="Submit Assignment Answers")
 def submit_assignment_from_game(assignment_id: int, submission_data: dict):
     db = SessionLocal()
@@ -1828,9 +1124,7 @@ def submit_assignment_from_game(assignment_id: int, submission_data: dict):
             if answer:
                 if question.question_type == "multiple_choice":
                     correct_answers = db.query(CorrectAnswer).filter_by(question_id=question.id).all()
-                    # Normalize answer for comparison (strip whitespace and lowercase)
-                    normalized_answer = answer.strip().lower()
-                    if any(ca.answer_text.strip().lower() == normalized_answer for ca in correct_answers):
+                    if any(ca.answer_text == answer for ca in correct_answers):
                         is_correct = True
                         points_earned = question.points
                 
@@ -1866,6 +1160,16 @@ def submit_assignment_from_game(assignment_id: int, submission_data: dict):
             answers_json=json.dumps(answers)
         )
         db.add(submission)
+        db.flush()
+
+        for item in detailed_results:
+            db.add(StudentAnswer(
+                submission_id=submission.id,
+                question_id=item["question_id"],
+                answer_text=str(item.get("answer", "")),
+                is_correct=bool(item.get("correct", False)),
+                points_earned=int(item.get("points_earned", 0))
+            ))
         
         # Update student points and last activity
         student = db.query(Student).filter_by(id=student_id).first()
@@ -1884,14 +1188,6 @@ def submit_assignment_from_game(assignment_id: int, submission_data: dict):
         percentage = (score / total_points * 100) if total_points > 0 else 0
         grade = "A" if percentage >= 90 else "B" if percentage >= 80 else "C" if percentage >= 70 else "D" if percentage >= 60 else "F"
         
-        # Clear any saved progress for this assignment
-        progress = db.query(AssignmentProgress).filter_by(
-            assignment_id=assignment_id, student_id=student_id
-        ).first()
-        if progress:
-            db.delete(progress)
-            db.commit()
-        
         return {
             "status": "success",
             "results": {
@@ -1908,189 +1204,6 @@ def submit_assignment_from_game(assignment_id: int, submission_data: dict):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    finally:
-        db.close()
-
-@api.post("/assignment/{assignment_id}/save_progress", summary="Save Assignment Progress (Unity)")
-def save_assignment_progress(assignment_id: int, progress_data: dict):
-    """Save student's progress during assignment for resume functionality"""
-    db = SessionLocal()
-    try:
-        api_guard(db)
-        student_id = progress_data.get("student_id")
-        current_question_index = progress_data.get("current_question_index", 0)
-        answers = progress_data.get("answers", {})
-        locked_questions = progress_data.get("locked_questions", [])
-        
-        if not student_id:
-            raise HTTPException(status_code=400, detail="Student ID is required")
-        
-        # Check if assignment exists
-        assignment = db.query(Assignment).filter_by(id=assignment_id).first()
-        if not assignment:
-            raise HTTPException(status_code=404, detail="Assignment not found")
-        
-        # Check if already submitted (don't save progress if submitted)
-        existing_submission = db.query(AssignmentSubmission).filter_by(
-            assignment_id=assignment_id, student_id=student_id
-        ).first()
-        if existing_submission:
-            return {
-                "status": "success",
-                "message": "Assignment already submitted, no progress saved",
-                "submitted": True
-            }
-        
-        # Find or create progress record
-        progress = db.query(AssignmentProgress).filter_by(
-            assignment_id=assignment_id, student_id=student_id
-        ).first()
-        
-        if progress:
-            progress.current_question_index = current_question_index
-            progress.answers_json = json.dumps(answers)
-            progress.locked_questions_json = json.dumps(locked_questions)
-            progress.last_updated = datetime.utcnow()
-        else:
-            progress = AssignmentProgress(
-                student_id=student_id,
-                assignment_id=assignment_id,
-                current_question_index=current_question_index,
-                answers_json=json.dumps(answers),
-                locked_questions_json=json.dumps(locked_questions)
-            )
-            db.add(progress)
-        
-        db.commit()
-        
-        return {
-            "status": "success",
-            "message": "Progress saved successfully",
-            "submitted": False,
-            "last_updated": progress.last_updated.isoformat()
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error saving progress: {str(e)}")
-    finally:
-        db.close()
-
-@api.get("/assignment/{assignment_id}/get_progress", summary="Get Assignment Progress (Unity)")
-def get_assignment_progress(assignment_id: int, student_id: int):
-    """Retrieve saved progress for resuming assignment"""
-    db = SessionLocal()
-    try:
-        api_guard(db)
-        
-        # Check if assignment exists
-        assignment = db.query(Assignment).filter_by(id=assignment_id).first()
-        if not assignment:
-            raise HTTPException(status_code=404, detail="Assignment not found")
-        
-        # Check if already submitted
-        existing_submission = db.query(AssignmentSubmission).filter_by(
-            assignment_id=assignment_id, student_id=student_id
-        ).first()
-        
-        if existing_submission:
-            return {
-                "status": "success",
-                "has_progress": False,
-                "submitted": True,
-                "message": "Assignment already submitted",
-                "submission_id": existing_submission.id
-            }
-        
-        # Get progress
-        progress = db.query(AssignmentProgress).filter_by(
-            assignment_id=assignment_id, student_id=student_id
-        ).first()
-        
-        if not progress:
-            return {
-                "status": "success",
-                "has_progress": False,
-                "submitted": False,
-                "message": "No saved progress found"
-            }
-        
-        # Parse JSON data
-        try:
-            answers = json.loads(progress.answers_json) if progress.answers_json else {}
-            locked_questions = json.loads(progress.locked_questions_json) if progress.locked_questions_json else []
-        except json.JSONDecodeError:
-            answers = {}
-            locked_questions = []
-        
-        return {
-            "status": "success",
-            "has_progress": True,
-            "submitted": False,
-            "progress": {
-                "current_question_index": progress.current_question_index,
-                "answers": answers,
-                "locked_questions": locked_questions,
-                "last_updated": progress.last_updated.isoformat()
-            }
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving progress: {str(e)}")
-    finally:
-        db.close()
-
-@api.delete("/assignment/{assignment_id}", summary="Delete Assignment from Unity")
-def delete_assignment_api(assignment_id: int):
-    """
-    Delete an assignment and all related data (questions, submissions, etc.)
-    Used by Unity game client
-    """
-    db = SessionLocal()
-    try:
-        api_guard(db)
-        
-        # Find the assignment
-        assignment = db.query(Assignment).filter_by(id=assignment_id).first()
-        if not assignment:
-            raise HTTPException(status_code=404, detail="Assignment not found")
-        
-        # Delete related records in proper order
-        # 1. Delete student history for this assignment
-        db.query(StudentHistory).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
-        
-        # 2. Delete student answers through submissions
-        submissions = db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).all()
-        for submission in submissions:
-            db.query(StudentAnswer).filter_by(submission_id=submission.id).delete(synchronize_session=False)
-        
-        # 3. Delete assignment submissions
-        db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
-        
-        # 4. Delete correct answers and options for all questions
-        questions = db.query(Question).filter_by(assignment_id=assignment.id).all()
-        for question in questions:
-            db.query(CorrectAnswer).filter_by(question_id=question.id).delete(synchronize_session=False)
-            db.query(QuestionOption).filter_by(question_id=question.id).delete(synchronize_session=False)
-        
-        # 5. Delete questions
-        db.query(Question).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
-        
-        # 6. Finally delete the assignment
-        db.delete(assignment)
-        db.commit()
-        
-        return {
-            "status": "success",
-            "message": f"Assignment '{assignment.title}' deleted successfully"
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error deleting assignment: {str(e)}")
     finally:
         db.close()
 
@@ -2156,6 +1269,122 @@ def get_class_leaderboard(class_code: str):
             },
             "leaderboard": leaderboard
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.get("/get_enumeration", summary="Unity Enumeration Questions")
+def get_enumeration_questions(student_id: int, assignment_id: int):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+
+        student = db.query(Student).filter_by(id=student_id).first()
+        if not student:
+            raise HTTPException(status_code=404, detail="Student not found")
+
+        assignment = db.query(Assignment).filter_by(id=assignment_id).first()
+        if not assignment:
+            raise HTTPException(status_code=404, detail="Assignment not found")
+        if assignment.is_archived or assignment.class_.is_archived:
+            return []
+
+        enrollment = db.query(Enrollment).filter_by(student_id=student_id, class_id=assignment.class_id).first()
+        if not enrollment:
+            raise HTTPException(status_code=403, detail="Student is not enrolled in this class")
+
+        enum_questions = db.query(Question).filter_by(
+            assignment_id=assignment_id,
+            question_type="enumeration"
+        ).order_by(Question.id.asc()).all()
+
+        payload = []
+        for q in enum_questions:
+            correct_answers = db.query(CorrectAnswer).filter_by(question_id=q.id).order_by(CorrectAnswer.id.asc()).all()
+            correct_texts = normalize_string_list([answer.answer_text for answer in correct_answers])
+
+            slot_count = q.slot_count if q.slot_count and q.slot_count > 0 else (len(correct_texts) or 1)
+            slot_count = max(1, min(4, slot_count))
+
+            word_bank = parse_word_bank_json(q.word_bank_json)
+            if not word_bank:
+                word_bank = list(correct_texts)
+
+            word_bank_lower = {w.lower() for w in word_bank}
+            for text_value in correct_texts:
+                if text_value.lower() not in word_bank_lower:
+                    word_bank.append(text_value)
+                    word_bank_lower.add(text_value.lower())
+
+            correct_set = {value.lower() for value in correct_texts}
+            answers = []
+            for text_value in word_bank:
+                answers.append({
+                    "answer_description": text_value,
+                    "correct_answer": 1 if text_value.lower() in correct_set else 0
+                })
+
+            payload.append({
+                "id": q.id,
+                "assignment_id": assignment_id,
+                "question_description": q.question_text,
+                "question_text": q.question_text,
+                "slot_count": slot_count,
+                "help_video_url": q.help_video_url or "",
+                "word_bank": word_bank,
+                "answers": answers
+            })
+
+        return payload
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.get("/get_history", summary="Unity History Results")
+def get_history(student_id: int, assignment_id: int | None = None):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+
+        student = db.query(Student).filter_by(id=student_id).first()
+        if not student:
+            raise HTTPException(status_code=404, detail="Student not found")
+
+        query = db.query(StudentAnswer, Question).join(
+            AssignmentSubmission,
+            StudentAnswer.submission_id == AssignmentSubmission.id
+        ).join(
+            Question,
+            StudentAnswer.question_id == Question.id
+        ).filter(
+            AssignmentSubmission.student_id == student_id
+        )
+
+        if assignment_id is not None:
+            query = query.filter(AssignmentSubmission.assignment_id == assignment_id)
+
+        rows = query.order_by(StudentAnswer.created_at.desc(), StudentAnswer.id.desc()).all()
+
+        results = []
+        for answer_row, question_row in rows:
+            correct_answers = db.query(CorrectAnswer).filter_by(question_id=question_row.id).order_by(CorrectAnswer.id.asc()).all()
+            correct_text = ", ".join([x.answer_text for x in correct_answers]) if correct_answers else ""
+
+            results.append({
+                "question_id": question_row.id,
+                "question_text": question_row.question_text,
+                "student_answer": answer_row.answer_text or "",
+                "correct_answer": correct_text,
+                "is_correct": 1 if bool(answer_row.is_correct) else 0
+            })
+
+        return results
     except HTTPException:
         raise
     except Exception as e:
@@ -2361,13 +1590,6 @@ def get_student_assignments_by_subject(request_data: dict):
             # Get questions for this assignment
             questions = db.query(Question).filter_by(assignment_id=assignment.id).all()
             
-            # Check if student has completed this assignment
-            submission = db.query(AssignmentSubmission).filter_by(
-                assignment_id=assignment.id,
-                student_id=student_id
-            ).first()
-            is_completed = submission is not None
-            
             question_list = []
             for q in questions:
                 q_data = {
@@ -2403,7 +1625,7 @@ def get_student_assignments_by_subject(request_data: dict):
                                 q_data["correct_answer_index"] = i
                                 break
                 
-                elif q.question_type in ["essay", "enumeration", "fill_in_the_blanks", "identification", "problem_solving"]:
+                elif q.question_type in ["short_answer", "essay", "enumeration", "fill_in_blank"]:
                     # For text-based questions, include correct answers
                     correct_answers = db.query(CorrectAnswer).filter_by(question_id=q.id).all()
                     q_data["correct_answers"] = [ca.answer_text for ca in correct_answers]
@@ -2425,8 +1647,7 @@ def get_student_assignments_by_subject(request_data: dict):
                 "points": assignment.points,
                 "total_questions": len(question_list),
                 "total_points": sum(q.points for q in questions),
-                "questions": question_list,
-                "is_completed": is_completed  # Flag to indicate if student has submitted this assignment
+                "questions": question_list
             })
         
         # Sort assignments by due date (upcoming first) and then by creation date
@@ -3533,179 +2754,60 @@ def admin_edit_enrollment(enrollment_id):
         db.close()
 
 @app.route("/create_assignment/<int:class_id>", methods=["GET", "POST"])
-def create_assignment(class_id):
+@with_db_session
+def create_assignment(db, class_id):
     # Allow admin as well
     if not session.get("teacher_id") and not session.get("admin_id"):
         return redirect(url_for("login"))
 
-    db = SessionLocal()
-    try:
-        print(f"Creating assignment for class {class_id}")
-        
-        # Ensure class belongs to current teacher, or allow admin
+    # Get class with proper authorization
+    class_ = get_class_for_teacher(db, class_id, session.get("teacher_id"), allow_admin=True)
+    if not class_:
+        flash("Class not found", "danger")
         if session.get("admin_id"):
-            class_ = db.query(Class).filter_by(id=class_id).first()
-        else:
-            class_ = db.query(Class).filter_by(id=class_id, teacher_id=session["teacher_id"]).first()
-        if not class_:
-            print(f"Class {class_id} not found")
-            flash("Class not found", "danger")
-            # Admin returns to assignments list for this class
-            if session.get("admin_id"):
-                return redirect(url_for("admin_class_assignments", class_id=class_id))
-            return redirect(url_for("index"))
-
-        if request.method == "POST":
-            print("Processing POST request for assignment creation")
-            title = request.form.get("title", "").strip()
-            # description removed
-            questions_json = request.form.get("questions", "[]")
-            
-            print(f"Assignment title: {title}")
-            print(f"Questions JSON: {questions_json}")
-
-            if not title:
-                print("Assignment title is missing")
-                flash("Assignment title is required", "danger")
-                return render_template("create_assignment.html", class_=class_)
-
-            try:
-                questions_data = json.loads(questions_json)
-                print(f"Parsed {len(questions_data)} questions")
-            except json.JSONDecodeError as e:
-                print(f"JSON decode error: {e}")
-                flash("Invalid questions data", "danger")
-                return render_template("create_assignment.html", class_=class_)
-
-            assignment = Assignment(class_id=class_id, title=title)
-            db.add(assignment)
-            db.flush()  # get assignment.id
-            print(f"Created assignment with ID: {assignment.id}")
-
-            for i, q in enumerate(questions_data):
-                print(f"Processing question {i+1}: {q}")
-                q_text = q.get("text", "").strip()
-                q_type = q.get("type")
-                points = int(q.get("points", 1))
-                help_video_url = q.get("help_video_url", "").strip()
-
-                if not q_text or q_type not in ["multiple_choice", "identification", "enumeration", "problem_solving", "essay", "fill_in_the_blanks", "yes_no"]:
-                    print(f"Skipping invalid question {i+1}: type={q_type}, text='{q_text}'")
-                    continue  # skip invalid question
-
-                difficulty = q.get("difficulty", "easy")  # Default to easy if not specified
-                question = Question(
-                    assignment_id=assignment.id,
-                    question_text=q_text,
-                    question_type=q_type,
-                    points=points,
-                    help_video_url=help_video_url,
-                    difficulty=difficulty
-                )
-                db.add(question)
-                db.flush()
-                print(f"Created question {i+1} with ID: {question.id}, difficulty: {difficulty}")
-
-                # Handle specific types
-                if q_type == "multiple_choice":
-                    options = q.get("options", [])
-                    correct_answers = q.get("correct_answers", [])
-                    print(f"Multiple choice - options: {options}, correct: {correct_answers}")
-                    for opt in options:
-                        if opt.strip():  # Only add non-empty options
-                            is_correct = opt.strip() in correct_answers
-                            print(f"  Adding option '{opt.strip()}' - is_correct: {is_correct}")
-                            db.add(QuestionOption(question_id=question.id, option_text=opt.strip(), is_correct=is_correct))
-                    for ans in correct_answers:
-                        if ans.strip():  # Only add non-empty answers
-                            db.add(CorrectAnswer(question_id=question.id, answer_text=ans.strip()))
-
-                elif q_type == "identification":
-                    # Support both singular and plural forms for compatibility
-                    correct = q.get("correct_answer", "")
-                    if not correct:
-                        correct_answers = q.get("correct_answers", [])
-                        correct = correct_answers[0] if correct_answers else ""
-                    print(f"Identification - correct: {correct}")
-                    if correct.strip():
-                        db.add(CorrectAnswer(question_id=question.id, answer_text=correct.strip()))
-
-                elif q_type == "enumeration":
-                    correct_answers = q.get("correct_answers", [])
-                    print(f"Enumeration - correct answers: {correct_answers}")
-                    for ans in correct_answers:
-                        if ans.strip():  # Only add non-empty answers
-                            db.add(CorrectAnswer(question_id=question.id, answer_text=ans.strip()))
-
-                elif q_type == "problem_solving":
-                    # Support both singular and plural forms for compatibility
-                    correct = q.get("correct_answer", "")
-                    if not correct:
-                        correct_answers = q.get("correct_answers", [])
-                        correct = correct_answers[0] if correct_answers else ""
-                    print(f"Problem solving - correct: {correct}")
-                    if correct.strip():
-                        db.add(CorrectAnswer(question_id=question.id, answer_text=correct.strip()))
-
-                elif q_type == "fill_in_the_blanks":
-                    correct_answers = q.get("correct_answers", [])
-                    print(f"Fill in the blanks - correct answers: {correct_answers}")
-                    for ans in correct_answers:
-                        if ans.strip():  # Only add non-empty answers
-                            db.add(CorrectAnswer(question_id=question.id, answer_text=ans.strip()))
-
-                elif q_type == "yes_no":
-                    # Yes/No questions have options ["Yes", "No"] and one correct answer
-                    options = q.get("options", ["Yes", "No"])
-                    correct_answer = q.get("correct_answer", "")
-                    if not correct_answer:
-                        correct_answers = q.get("correct_answers", [])
-                        correct_answer = correct_answers[0] if correct_answers else ""
-                    print(f"Yes/No - options: {options}, correct: {correct_answer}")
-                    
-                    # Add Yes/No options
-                    for opt in options:
-                        if opt.strip():
-                            db.add(QuestionOption(question_id=question.id, option_text=opt.strip()))
-                    
-                    # Add correct answer
-                    if correct_answer.strip():
-                        db.add(CorrectAnswer(question_id=question.id, answer_text=correct_answer.strip()))
-
-                # essay: no correct answer
-
-            db.commit()
-            print("Assignment created successfully")
-            flash("Assignment created successfully!", "success")
-            if session.get("admin_id"):
-                return redirect(url_for("admin_class_assignments", class_id=class_id))
-            return redirect(url_for("index"))
-
-        # GET
-        return render_template("create_assignment.html", class_=class_)
-
-    except SQLAlchemyError as e:
-        print(f"SQLAlchemy error during assignment creation: {e}")
-        import traceback
-        traceback.print_exc()
-        db.rollback()
-        flash("An error occurred while creating the assignment", "danger")
+            return redirect(url_for("admin_class_assignments", class_id=class_id))
         return redirect(url_for("index"))
-    except Exception as e:
-        print(f"Unexpected error during assignment creation: {e}")
-        import traceback
-        traceback.print_exc()
-        db.rollback()
-        flash("An error occurred while creating the assignment", "danger")
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        questions_json = request.form.get("questions", "[]")
+        
+        # Validate input data
+        is_valid, result = validate_assignment_data(title, questions_json)
+        if not is_valid:
+            flash(result, "danger")
+            return render_template("create_assignment.html", class_=class_)
+        
+        questions_data = result
+
+        # Create assignment
+        assignment = Assignment(class_id=class_id, title=title)
+        db.add(assignment)
+        db.flush()
+
+        # Create questions
+        created_count = 0
+        for question_data in questions_data:
+            if create_question_with_answers(db, assignment.id, question_data):
+                created_count += 1
+
+        if created_count == 0:
+            flash("No valid questions were created", "danger")
+            return render_template("create_assignment.html", class_=class_)
+
+        db.commit()
+        flash("Assignment created successfully!", "success")
+        
+        if session.get("admin_id"):
+            return redirect(url_for("admin_class_assignments", class_id=class_id))
         return redirect(url_for("index"))
-    finally:
-        db.close()
+
+    # GET
+    return render_template("create_assignment.html", class_=class_)
 
 @app.route("/view_assignment/<int:assignment_id>")
+@require_teacher_or_admin
 def view_assignment(assignment_id):
-    # Allow admin as well
-    if not session.get("teacher_id") and not session.get("admin_id"):
-        return redirect(url_for("login"))
     
     db = SessionLocal()
     try:
@@ -3785,7 +2887,9 @@ def edit_assignment(assignment_id):
                     question_text=q_text,
                     question_type=q_type,
                     points=points,
-                    help_video_url=help_video_url
+                    help_video_url=help_video_url,
+                    slot_count=0,
+                    word_bank_json=None
                 )
                 db.add(question)
                 db.flush()
@@ -3799,9 +2903,21 @@ def edit_assignment(assignment_id):
                     for ans in correct_answers:
                         db.add(CorrectAnswer(question_id=question.id, answer_text=ans))
                 elif q_type == "enumeration":
-                    correct_answers = q.get("correct_answers", [])
+                    correct_answers = normalize_string_list(q.get("correct_answers", []))
                     for ans in correct_answers:
-                        db.add(CorrectAnswer(question_id=question.id, answer_text=ans))
+                        db.add(CorrectAnswer(question_id=question.id, answer_text=ans.strip()))
+
+                    requested_slots = q.get("slot_count", len(correct_answers) or 1)
+                    try:
+                        requested_slots = int(requested_slots)
+                    except Exception:
+                        requested_slots = len(correct_answers) or 1
+                    question.slot_count = max(1, min(4, requested_slots))
+
+                    word_bank = normalize_string_list(q.get("word_bank", []))
+                    if not word_bank:
+                        word_bank = list(correct_answers)
+                    question.word_bank_json = json.dumps(word_bank)
                 elif q_type == "problem_solving":
                     correct = q.get("correct_answer", "")
                     if correct:
@@ -3838,6 +2954,8 @@ def edit_assignment(assignment_id):
             elif question.question_type == "enumeration":
                 correct_answers = db.query(CorrectAnswer).filter_by(question_id=question.id).all()
                 q_data["correct_answers"] = [ans.answer_text for ans in correct_answers]
+                q_data["slot_count"] = max(1, min(4, int(question.slot_count or len(q_data["correct_answers"]) or 1)))
+                q_data["word_bank"] = parse_word_bank_json(question.word_bank_json)
             elif question.question_type == "problem_solving":
                 correct_answer = db.query(CorrectAnswer).filter_by(question_id=question.id).first()
                 q_data["correct_answer"] = correct_answer.answer_text if correct_answer else ""
@@ -3864,64 +2982,47 @@ def edit_assignment(assignment_id):
     finally:
         db.close()
 
-@app.route("/delete_assignment/<int:assignment_id>", methods=["GET", "POST"])
+@app.route("/delete_assignment/<int:assignment_id>")
 def delete_assignment(assignment_id):
     # Allow admin as well
     if not session.get("teacher_id") and not session.get("admin_id"):
         return redirect(url_for("login"))
 
+    assignment = None
     db = SessionLocal()
-    class_id = None
     try:
         assignment = db.query(Assignment).filter_by(id=assignment_id).first()
         if not assignment:
             flash("Assignment not found", "danger")
-            return redirect(url_for("index"))
-        
-        # Store class_id for redirect
-        class_id = assignment.class_id
-        
-        # Check permissions
-        if not (session.get("admin_id") or assignment.class_.teacher_id == session["teacher_id"]):
+        elif session.get("admin_id") or assignment.class_.teacher_id == session["teacher_id"]:
+            # Delete related records in proper order
+            # 1. Delete student answers through submissions
+            submissions = db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).all()
+            for submission in submissions:
+                db.query(StudentAnswer).filter_by(submission_id=submission.id).delete()
+            # 2. Delete assignment submissions
+            db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).delete()
+            # 3. Delete correct answers
+            questions = db.query(Question).filter_by(assignment_id=assignment.id).all()
+            for question in questions:
+                db.query(CorrectAnswer).filter_by(question_id=question.id).delete()
+                db.query(QuestionOption).filter_by(question_id=question.id).delete()
+            # 4. Delete questions
+            db.query(Question).filter_by(assignment_id=assignment.id).delete()
+            # 5. Finally delete the assignment
+            db.delete(assignment)
+            db.commit()
+            flash("Assignment deleted successfully", "success")
+        else:
             flash("You don't have permission to delete this assignment", "danger")
-            return redirect(url_for("index"))
-        
-        # Delete related records in proper order
-        # 1. Delete student history for this assignment
-        db.query(StudentHistory).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
-        
-        # 2. Delete student answers through submissions
-        submissions = db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).all()
-        for submission in submissions:
-            db.query(StudentAnswer).filter_by(submission_id=submission.id).delete(synchronize_session=False)
-        
-        # 3. Delete assignment submissions
-        db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
-        
-        # 4. Delete correct answers and options
-        questions = db.query(Question).filter_by(assignment_id=assignment.id).all()
-        for question in questions:
-            db.query(CorrectAnswer).filter_by(question_id=question.id).delete(synchronize_session=False)
-            db.query(QuestionOption).filter_by(question_id=question.id).delete(synchronize_session=False)
-        
-        # 5. Delete questions
-        db.query(Question).filter_by(assignment_id=assignment.id).delete(synchronize_session=False)
-        
-        # 6. Finally delete the assignment
-        db.delete(assignment)
-        db.commit()
-        flash("Assignment deleted successfully", "success")
-        
     except Exception as e:
         db.rollback()
         flash(f"Error deleting assignment: {str(e)}", "danger")
-        print(f"Delete assignment error: {e}")
     finally:
         db.close()
     
-    # Redirect based on user type
-    if session.get("admin_id") and class_id:
-        return redirect(url_for("admin_class_assignments", class_id=class_id))
+    if session.get("admin_id") and assignment:
+        return redirect(url_for("admin_class_assignments", class_id=assignment.class_id))
     return redirect(url_for("index"))
 
 # --- Admin: Assignments list per class ---
@@ -3962,30 +3063,15 @@ def take_assignment(assignment_id):
 
         if request.method == "POST":
             # Process quiz submission
+            student_name = request.form.get("student_name", "Anonymous")
             answers = {}
             score = 0
             total_points = 0
             
-            # Check if submission is JSON-based (from enhanced template)
-            answers_json_str = request.form.get("answers_json", "")
-            if answers_json_str:
-                try:
-                    submitted_answers = json.loads(answers_json_str)
-                    answer_map = {int(item['question_id']): item['answer'] for item in submitted_answers}
-                except (json.JSONDecodeError, KeyError):
-                    answer_map = {}
-            else:
-                answer_map = {}
-            
             for question in assignment.questions:
                 total_points += question.points
-                
-                # Get student answer from JSON or form data
-                if answer_map:
-                    student_answer = answer_map.get(question.id, "").strip()
-                else:
-                    answer_key = f"question_{question.id}"
-                    student_answer = request.form.get(answer_key, "").strip()
+                answer_key = f"question_{question.id}"
+                student_answer = request.form.get(answer_key, "").strip()
                 
                 if student_answer:
                     is_correct = False
@@ -3993,9 +3079,7 @@ def take_assignment(assignment_id):
                     
                     if question.question_type == "multiple_choice":
                         correct_answers = db.query(CorrectAnswer).filter_by(question_id=question.id).all()
-                        # Normalize answer for comparison (strip whitespace and lowercase)
-                        normalized_answer = student_answer.strip().lower()
-                        if any(ans.answer_text.strip().lower() == normalized_answer for ans in correct_answers):
+                        if any(ans.answer_text == student_answer for ans in correct_answers):
                             is_correct = True
                             points_earned = question.points
                     
@@ -4060,11 +3144,11 @@ def take_assignment(assignment_id):
             return redirect(url_for("assignment_results", assignment_id=assignment_id))
         
         # GET request - show quiz form
-        questions = db.query(Question).filter_by(assignment_id=assignment_id).order_by(Question.id).all()
+        questions = db.query(Question).filter_by(assignment_id=assignment_id).all()
         
-        # Load options for multiple choice and yes_no questions
+        # Load options for multiple choice questions
         for question in questions:
-            if question.question_type in ["multiple_choice", "yes_no"]:
+            if question.question_type == "multiple_choice":
                 question.options = db.query(QuestionOption).filter_by(question_id=question.id).all()
 
         if request.method == "GET":
@@ -4073,7 +3157,7 @@ def take_assignment(assignment_id):
                 if question.question_type == "multiple_choice":
                     random.shuffle(question.options)
 
-        return render_template("take_assignment_enhanced.html", assignment=assignment, questions=questions)
+        return render_template("take_assignment.html", assignment=assignment, questions=questions)
 
     except SQLAlchemyError as e:
         flash("Error loading assignment", "danger")
@@ -4092,7 +3176,7 @@ def class_info(class_id):
             flash("Class not found", "danger")
             return redirect(url_for("index"))
         
-        students = [enrollment.student for enrollment in class_.enrollments if enrollment.student is not None]
+        students = [enrollment.student for enrollment in class_.enrollments]
         assignments = class_.assignments
         
         # Calculate progress for each assignment
@@ -4173,7 +3257,7 @@ def assignment_monitor(assignment_id):
             flash("Assignment not found", "danger")
             return redirect(url_for("index"))
         
-        students = [enrollment.student for enrollment in assignment.class_.enrollments if enrollment.student is not None]
+        students = [enrollment.student for enrollment in assignment.class_.enrollments]
         submissions = db.query(AssignmentSubmission).filter_by(assignment_id=assignment_id).all()
         
         # Create submission lookup
@@ -4269,72 +3353,6 @@ def assignment_results(assignment_id):
     finally:
         db.close()
 
-@app.route("/view_essay_submissions/<int:assignment_id>")
-def view_essay_submissions(assignment_id):
-    """View all essay submissions for an assignment from StudentHistory"""
-    if "teacher_id" not in session:
-        return redirect(url_for("login"))
-    
-    db = SessionLocal()
-    try:
-        assignment = db.query(Assignment).filter_by(id=assignment_id).first()
-        if not assignment or assignment.class_.teacher_id != session["teacher_id"]:
-            flash("Assignment not found", "danger")
-            return redirect(url_for("index"))
-        
-        # Get all essay submissions from StudentHistory for this assignment
-        try:
-            essay_submissions = db.query(StudentHistory).filter_by(
-                assignment_id=assignment_id
-            ).order_by(StudentHistory.id.desc()).all()
-        except Exception as e:
-            print(f"Error querying StudentHistory: {e}")
-            essay_submissions = []
-        
-        # Add student information
-        for submission in essay_submissions:
-            try:
-                submission.student = db.query(Student).filter_by(id=submission.student_id).first()
-            except:
-                submission.student = None
-        
-        return render_template("view_essay_submissions.html", 
-                             assignment=assignment, 
-                             submissions=essay_submissions)
-    finally:
-        db.close()
-
-@app.route("/update_essay_feedback/<int:history_id>", methods=["POST"])
-def update_essay_feedback(history_id):
-    """Update grade for an essay submission in StudentHistory"""
-    if "teacher_id" not in session:
-        return redirect(url_for("login"))
-    
-    db = SessionLocal()
-    try:
-        history = db.query(StudentHistory).filter_by(id=history_id).first()
-        if not history:
-            flash("Submission not found", "danger")
-            return redirect(url_for("index"))
-        
-        # Update score and grading status
-        score = request.form.get("score", "").strip()
-        is_correct = int(request.form.get("is_correct", 0))
-        
-        history.correct_answer = f"Score: {score}"
-        history.is_correct = is_correct
-        
-        db.commit()
-        flash("Grade saved successfully!", "success")
-        
-        return redirect(url_for("view_essay_submissions", assignment_id=history.assignment_id))
-    except Exception as e:
-        db.rollback()
-        flash(f"Error saving grade: {str(e)}", "danger")
-        return redirect(url_for("index"))
-    finally:
-        db.close()
-
 # Server Startup
 
 # Combined ASGI application for production
@@ -4372,107 +3390,6 @@ def create_combined_app():
 @app.route("/admin/test")
 def admin_test():
     return "Admin route is working!", 200
-
-# ============================================
-# FEEDBACK MANAGEMENT ROUTES
-# ============================================
-
-@app.route("/feedback/list")
-def feedback_list():
-    """View all feedback from students"""
-    if not session.get("teacher_id") and not session.get("admin_id"):
-        return redirect(url_for("login"))
-    
-    db = SessionLocal()
-    try:
-        teacher_id = session.get("teacher_id")
-        
-        # Admin can see all feedback, teacher sees only feedback directed to them
-        if session.get("admin_id"):
-            feedbacks = db.query(Feedback).order_by(Feedback.created_at.desc()).all()
-        else:
-            # Teacher sees only feedback specifically sent to them
-            feedbacks = db.query(Feedback).filter_by(teacher_id=teacher_id).order_by(Feedback.created_at.desc()).all()
-        
-        # Load related data
-        for feedback in feedbacks:
-            feedback.student = db.query(Student).filter_by(id=feedback.student_id).first()
-            feedback.replies = db.query(FeedbackReply).filter_by(feedback_id=feedback.id).order_by(FeedbackReply.created_at).all()
-            for reply in feedback.replies:
-                reply.teacher = db.query(Teacher).filter_by(id=reply.teacher_id).first()
-        
-        return render_template("feedback_list.html", feedbacks=feedbacks)
-    
-    except Exception as e:
-        flash(f"Error loading feedback: {str(e)}", "danger")
-        return redirect(url_for("index"))
-    finally:
-        db.close()
-
-@app.route("/feedback/<int:feedback_id>/reply", methods=["POST"])
-def feedback_reply(feedback_id):
-    """Reply to student feedback"""
-    if not session.get("teacher_id") and not session.get("admin_id"):
-        return redirect(url_for("login"))
-    
-    db = SessionLocal()
-    try:
-        feedback = db.query(Feedback).filter_by(id=feedback_id).first()
-        if not feedback:
-            flash("Feedback not found", "danger")
-            return redirect(url_for("feedback_list"))
-        
-        reply_message = request.form.get("reply_message", "").strip()
-        if not reply_message:
-            flash("Reply message cannot be empty", "warning")
-            return redirect(url_for("feedback_list"))
-        
-        teacher_id = session.get("teacher_id") or session.get("admin_id")
-        
-        reply = FeedbackReply(
-            feedback_id=feedback_id,
-            teacher_id=teacher_id,
-            reply_message=reply_message
-        )
-        
-        db.add(reply)
-        db.commit()
-        
-        flash("Reply sent successfully!", "success")
-        return redirect(url_for("feedback_list"))
-    
-    except Exception as e:
-        db.rollback()
-        flash(f"Error sending reply: {str(e)}", "danger")
-        return redirect(url_for("feedback_list"))
-    finally:
-        db.close()
-
-@app.route("/feedback/<int:feedback_id>/delete", methods=["POST"])
-def feedback_delete(feedback_id):
-    """Delete feedback and all replies"""
-    if not session.get("teacher_id") and not session.get("admin_id"):
-        return redirect(url_for("login"))
-    
-    db = SessionLocal()
-    try:
-        feedback = db.query(Feedback).filter_by(id=feedback_id).first()
-        if not feedback:
-            flash("Feedback not found", "danger")
-            return redirect(url_for("feedback_list"))
-        
-        db.delete(feedback)
-        db.commit()
-        
-        flash("Feedback deleted successfully", "success")
-        return redirect(url_for("feedback_list"))
-    
-    except Exception as e:
-        db.rollback()
-        flash(f"Error deleting feedback: {str(e)}", "danger")
-        return redirect(url_for("feedback_list"))
-    finally:
-        db.close()
 
 # Create the combined app instance for production deployment
 combined_app = create_combined_app()

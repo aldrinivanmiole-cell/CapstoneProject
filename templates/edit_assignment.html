@@ -118,89 +118,48 @@ function renderQuestions() {
         extraDiv.innerHTML = `
           <label class="form-label">Options</label>
           <div class="options-container"></div>
-          <button type="button" class="btn btn-sm btn-outline-secondary add-option">Add option</button>
-          <div class="mt-3">
-            <label class="form-label">Correct Answers</label>
-            <div class="correct-answers-container"></div>
-          </div>`;
+          <button type="button" class="btn btn-sm btn-outline-secondary add-option">Add option</button>`;
         const optContainer = extraDiv.querySelector('.options-container');
-        const correctContainer = extraDiv.querySelector('.correct-answers-container');
         q.options = q.options || [];
-        q.correct_answers = q.correct_answers || [];
-        
         function renderOpts() {
           optContainer.innerHTML = '';
-          correctContainer.innerHTML = '';
           q.options.forEach((opt, oi) => {
             const row = document.createElement('div');
             row.className = 'option-input';
             row.innerHTML = `<input type="text" class="form-control option-text" value="${opt}">
                              <span class="material-icons text-danger remove-opt" data-idx="${oi}">close</span>`;
             optContainer.appendChild(row);
-            row.querySelector('.remove-opt').onclick = () => { 
-              // Remove option and any correct answer reference
-              const removedOpt = q.options[oi];
-              q.options.splice(oi,1); 
-              q.correct_answers = q.correct_answers.filter(ans => ans !== removedOpt);
-              renderOpts(); 
-            };
-            row.querySelector('.option-text').oninput = e => { 
-              const oldValue = q.options[oi];
-              const newValue = e.target.value;
-              q.options[oi] = newValue; 
-              // Update correct answers if this option was marked correct
-              const correctIdx = q.correct_answers.indexOf(oldValue);
-              if (correctIdx !== -1) {
-                q.correct_answers[correctIdx] = newValue;
-              }
-              renderOpts();
-            };
-            
-            // Add checkbox for correct answer
-            const checkRow = document.createElement('div');
-            checkRow.className = 'form-check';
-            const isCorrect = q.correct_answers.includes(opt);
-            checkRow.innerHTML = `
-              <input class="form-check-input correct-check" type="checkbox" ${isCorrect ? 'checked' : ''} data-idx="${oi}">
-              <label class="form-check-label">Mark "${opt}" as correct</label>`;
-            correctContainer.appendChild(checkRow);
-            
-            checkRow.querySelector('.correct-check').onchange = e => {
-              if (e.target.checked) {
-                if (!q.correct_answers.includes(opt)) {
-                  q.correct_answers.push(opt);
-                }
-              } else {
-                q.correct_answers = q.correct_answers.filter(ans => ans !== opt);
-              }
-            };
+            row.querySelector('.remove-opt').onclick = () => { q.options.splice(oi,1); renderOpts(); };
+            row.querySelector('.option-text').oninput = e => { q.options[oi] = e.target.value; };
           });
         }
         renderOpts();
         extraDiv.querySelector('.add-option').onclick = () => { q.options.push(''); renderOpts(); };
       } else if (qt === 'enumeration') {
         extraDiv.innerHTML = `
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label">Slot Count (1-4)</label>
+              <input type="number" min="1" max="4" class="form-control enum-slot-count" value="${q.slot_count || 4}">
+            </div>
+          </div>
           <label class="form-label">Correct answers (one per line)</label>
-          <textarea class="form-control enum-answers" rows="3">${(q.correct_answers||[]).join('\n')}</textarea>`;
+          <textarea class="form-control enum-answers mb-3" rows="3">${(q.correct_answers||[]).join('\n')}</textarea>
+          <label class="form-label">Word bank (optional, one per line)</label>
+          <textarea class="form-control enum-word-bank" rows="3">${(q.word_bank||[]).join('\n')}</textarea>`;
         extraDiv.querySelector('.enum-answers').oninput = e => { q.correct_answers = e.target.value.split('\n').filter(Boolean); };
-      } else if (qt === 'problem_solving' || qt === 'identification') {
+        extraDiv.querySelector('.enum-word-bank').oninput = e => { q.word_bank = e.target.value.split('\n').map(v => v.trim()).filter(Boolean); };
+        extraDiv.querySelector('.enum-slot-count').oninput = e => {
+          const parsed = parseInt(e.target.value || '4', 10);
+          const bounded = Math.min(4, Math.max(1, isNaN(parsed) ? 4 : parsed));
+          q.slot_count = bounded;
+          e.target.value = bounded;
+        };
+      } else if (qt === 'problem_solving') {
         extraDiv.innerHTML = `
           <label class="form-label">Correct answer</label>
           <input type="text" class="form-control ps-answer" value="${q.correct_answer||''}">`;
         extraDiv.querySelector('.ps-answer').oninput = e => { q.correct_answer = e.target.value; };
-      } else if (qt === 'fill_in_the_blanks') {
-        extraDiv.innerHTML = `
-          <label class="form-label">Correct answers (comma separated)</label>
-          <input type="text" class="form-control fib-answers" value="${(q.correct_answers||[]).join(', ')}">`;
-        extraDiv.querySelector('.fib-answers').oninput = e => { q.correct_answers = e.target.value.split(',').map(a => a.trim()).filter(Boolean); };
-      } else if (qt === 'yes_no') {
-        extraDiv.innerHTML = `
-          <label class="form-label">Correct answer</label>
-          <select class="form-select yesno-answer">
-            <option value="Yes" ${(q.correct_answer||q.correct_answers?.[0])==='Yes'?'selected':''}>Yes</option>
-            <option value="No" ${(q.correct_answer||q.correct_answers?.[0])==='No'?'selected':''}>No</option>
-          </select>`;
-        extraDiv.querySelector('.yesno-answer').onchange = e => { q.correct_answer = e.target.value; q.correct_answers = [e.target.value]; };
       }
       // essay: nothing extra
     }
