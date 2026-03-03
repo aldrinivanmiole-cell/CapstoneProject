@@ -1,6 +1,6 @@
 # Flask + FastAPI Combined Application
 from flask import Flask, render_template, request, redirect, url_for, session, flash, make_response, send_file
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.wsgi import WSGIMiddleware
@@ -1396,6 +1396,484 @@ def get_history(student_id: int, assignment_id: int | None = None):
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     finally:
         db.close()
+
+def _require_student_assignment_access(db, student_id: int, assignment_id: int):
+    student = db.query(Student).filter_by(id=student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    assignment = db.query(Assignment).filter_by(id=assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    if assignment.is_archived or assignment.class_.is_archived:
+        return None
+
+    enrollment = db.query(Enrollment).filter_by(student_id=student_id, class_id=assignment.class_id).first()
+    if not enrollment:
+        raise HTTPException(status_code=403, detail="Student is not enrolled in this class")
+
+    return assignment
+
+def _legacy_answers_for_question(db, question, legacy_type: str):
+    options = db.query(QuestionOption).filter_by(question_id=question.id).order_by(QuestionOption.id.asc()).all()
+    correct_answers = db.query(CorrectAnswer).filter_by(question_id=question.id).order_by(CorrectAnswer.id.asc()).all()
+    correct_texts = [answer.answer_text.strip() for answer in correct_answers if answer.answer_text]
+    correct_lookup = {value.lower() for value in correct_texts}
+
+    payload = []
+    if options:
+        for option in options:
+            raw_text = (option.option_text or "").strip()
+            if not raw_text:
+                continue
+
+            out_text = raw_text
+            normalized_key = raw_text.lower()
+            if legacy_type == "yes_no":
+                if normalized_key == "yes":
+                    out_text = "True"
+                elif normalized_key == "no":
+                    out_text = "False"
+
+            is_correct = 1 if normalized_key in correct_lookup else 0
+            payload.append({
+                "answer_description": out_text,
+                "correct_answer": is_correct
+            })
+    else:
+        for answer_text in correct_texts:
+            out_text = answer_text
+            normalized_key = answer_text.lower()
+            if legacy_type == "yes_no":
+                if normalized_key == "yes":
+                    out_text = "True"
+                elif normalized_key == "no":
+                    out_text = "False"
+            payload.append({
+                "answer_description": out_text,
+                "correct_answer": 1
+            })
+
+    return payload
+
+def _legacy_question_payload(db, question):
+    answers = _legacy_answers_for_question(db, question, question.question_type)
+    choices = [answer.get("answer_description", "") for answer in answers]
+    correct_answer_text = ""
+    for answer in answers:
+        if int(answer.get("correct_answer", 0)) == 1:
+            correct_answer_text = answer.get("answer_description", "")
+            break
+
+    return {
+        "id": question.id,
+        "assignment_id": question.assignment_id,
+        "question_description": question.question_text,
+        "question_text": question.question_text,
+        "tutorial_link": question.help_video_url or "",
+        "difficulty": "easy",
+        "answers": answers,
+        "choices": choices,
+        "correct_answer": correct_answer_text
+    }
+
+def _legacy_questions_by_type(db, student_id: int, assignment_id: int, allowed_types: list[str]):
+    assignment = _require_student_assignment_access(db, student_id, assignment_id)
+    if assignment is None:
+        return []
+
+    rows = db.query(Question).filter(
+        Question.assignment_id == assignment_id,
+        Question.question_type.in_(allowed_types)
+    ).order_by(Question.id.asc()).all()
+
+    return [_legacy_question_payload(db, question) for question in rows]
+
+def _upsert_legacy_submission(db, student_id: int, assignment_id: int, score_value: int, total_points_value: int, answers_payload: str = "{}"):
+    assignment = db.query(Assignment).filter_by(id=assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    existing_submission = db.query(AssignmentSubmission).filter_by(
+        assignment_id=assignment_id,
+        student_id=student_id
+    ).first()
+    if existing_submission:
+        db.delete(existing_submission)
+        db.flush()
+
+    submission = AssignmentSubmission(
+        assignment_id=assignment_id,
+        student_id=student_id,
+        score=max(0, int(score_value)),
+        total_points=max(0, int(total_points_value)),
+        answers_json=answers_payload or "{}"
+    )
+    db.add(submission)
+
+    student = db.query(Student).filter_by(id=student_id).first()
+    if student:
+        student.total_points = (student.total_points or 0) + max(0, int(score_value))
+        student.last_active = datetime.utcnow()
+
+    db.commit()
+    return submission
+
+@api.post("/login", summary="Legacy Unity Student Login")
+def legacy_student_login(username: str = Form(...), password: str = Form(...)):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        identity = (username or "").strip()
+        pwd = (password or "").strip()
+        if not identity or not pwd:
+            return {"status": "FAIL", "message": "Please enter username and password."}
+
+        student = db.query(Student).filter_by(email=identity).first()
+        if not student:
+            student = db.query(Student).filter_by(name=identity).first()
+        if not student or not student.check_password(pwd):
+            return {"status": "FAIL", "message": "Invalid username or password."}
+
+        student.last_active = datetime.utcnow()
+        db.commit()
+        return {
+            "status": "SUCCESS",
+            "id": str(student.id),
+            "username": student.name or student.email or "Student",
+            "gender": "",
+            "message": "Login successful"
+        }
+    except Exception as e:
+        db.rollback()
+        return {"status": "FAIL", "message": f"Login failed: {str(e)}"}
+    finally:
+        db.close()
+
+@api.post("/join_classroom", summary="Legacy Unity Join Classroom")
+def legacy_join_classroom(student_id: int = Form(...), class_code: str = Form(...)):
+    return join_class_with_code({"student_id": student_id, "class_code": class_code})
+
+@api.post("/save_classroom", summary="Legacy Unity Save Classroom")
+def legacy_save_classroom(
+    student_id: int = Form(...),
+    room_no: int = Form(1),
+    code: str = Form(...)
+):
+    result = join_class_with_code({"student_id": student_id, "class_code": code})
+    result["room_no"] = room_no
+    return result
+
+@api.get("/get_classrooms", summary="Legacy Unity Get Classrooms")
+def legacy_get_classrooms(student_id: int):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        enrollments = db.query(Enrollment).filter_by(student_id=student_id).order_by(Enrollment.id.asc()).all()
+        rows = []
+        room_no = 1
+        for enrollment in enrollments:
+            class_ = db.query(Class).filter_by(id=enrollment.class_id).first()
+            if not class_ or class_.is_archived:
+                continue
+
+            has_assignments = db.query(Assignment).filter_by(class_id=class_.id, is_archived=False).count() > 0
+            rows.append({
+                "room_no": room_no,
+                "class_id": class_.id,
+                "description": class_.name,
+                "classroomId": class_.id,
+                "subjectName": class_.name,
+                "hasAssignments": has_assignments
+            })
+            room_no += 1
+
+        return rows
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.get("/get_assignment_types", summary="Legacy Unity Assignment Types")
+def legacy_get_assignment_types(student_id: int, class_id: int):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        enrolled = db.query(Enrollment).filter_by(student_id=student_id, class_id=class_id).first()
+        if not enrolled:
+            return []
+
+        assignments = db.query(Assignment).filter_by(class_id=class_id, is_archived=False).order_by(Assignment.id.asc()).all()
+        payload = []
+        for assignment in assignments:
+            submitted = db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id, student_id=student_id).first()
+            payload.append({
+                "category_id": assignment.id,
+                "description": assignment.title,
+                "is_completed": True if submitted else False
+            })
+        return payload
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.get("/get_assignments", summary="Legacy Unity Assignment List")
+def legacy_get_assignments(student_id: int, classroom_id: int):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        enrolled = db.query(Enrollment).filter_by(student_id=student_id, class_id=classroom_id).first()
+        if not enrolled:
+            return []
+
+        assignments = db.query(Assignment).filter_by(class_id=classroom_id, is_archived=False).order_by(Assignment.id.asc()).all()
+        payload = []
+        for assignment in assignments:
+            first_question = db.query(Question).filter_by(assignment_id=assignment.id).order_by(Question.id.asc()).first()
+            submitted = db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id, student_id=student_id).first()
+
+            assignment_type = "multiple choice"
+            if first_question and first_question.question_type:
+                assignment_type = first_question.question_type.replace("_", " ")
+
+            payload.append({
+                "assignmentId": assignment.id,
+                "assignmentName": assignment.title,
+                "assignmentType": assignment_type,
+                "isSubmitted": True if submitted else False
+            })
+
+        return payload
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.get("/get_questions", summary="Legacy Unity Multiple Choice Questions")
+def legacy_get_questions(student_id: int, assignment_id: int | None = None):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        if assignment_id is None:
+            assignment = db.query(Assignment).join(Class).join(Enrollment, Enrollment.class_id == Class.id).filter(
+                Enrollment.student_id == student_id,
+                Assignment.is_archived == False,
+                Class.is_archived == False
+            ).order_by(Assignment.id.asc()).first()
+            if not assignment:
+                return []
+            assignment_id = assignment.id
+
+        return _legacy_questions_by_type(db, student_id, assignment_id, ["multiple_choice", "yes_no"])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.get("/api/questions", summary="Legacy Unity API Questions Alias")
+def legacy_api_questions(student_id: int, category_id: int):
+    return legacy_get_questions(student_id=student_id, assignment_id=category_id)
+
+@api.get("/get_identification", summary="Legacy Unity Identification Questions")
+def legacy_get_identification(student_id: int, assignment_id: int):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        return _legacy_questions_by_type(db, student_id, assignment_id, ["identification"])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.get("/get_yesno", summary="Legacy Unity Yes/No Questions")
+def legacy_get_yesno(student_id: int, assignment_id: int):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        return _legacy_questions_by_type(db, student_id, assignment_id, ["yes_no"])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.get("/get_problems", summary="Legacy Unity Problem Solving Questions")
+def legacy_get_problems(student_id: int, assignment_id: int):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        return _legacy_questions_by_type(db, student_id, assignment_id, ["problem_solving"])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.get("/get_fib", summary="Legacy Unity Fill In The Blank Questions")
+def legacy_get_fib(student_id: int, assignment_id: int):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        return _legacy_questions_by_type(db, student_id, assignment_id, ["fill_in_the_blanks"])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.get("/get_essay", summary="Legacy Unity Essay Questions")
+def legacy_get_essay(student_id: int, assignment_id: int):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        return _legacy_questions_by_type(db, student_id, assignment_id, ["essay"])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.post("/submit_score", summary="Legacy Unity Submit Score")
+def legacy_submit_score(
+    student_id: int = Form(...),
+    assignment_id: int | None = Form(None),
+    classes_id: int | None = Form(None),
+    score: int = Form(0)
+):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        if assignment_id is None:
+            if classes_id:
+                first_assignment = db.query(Assignment).filter_by(class_id=classes_id, is_archived=False).order_by(Assignment.id.asc()).first()
+                if first_assignment:
+                    assignment_id = first_assignment.id
+            if assignment_id is None:
+                return {"status": "SUCCESS", "message": "Score received."}
+
+        total_points = db.query(Question).filter_by(assignment_id=assignment_id).with_entities(Question.points).all()
+        total_value = sum([row[0] or 0 for row in total_points]) if total_points else int(score)
+        _upsert_legacy_submission(db, student_id, assignment_id, int(score), max(int(score), int(total_value)))
+        return {"status": "SUCCESS", "message": "Score saved successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        return {"status": "FAIL", "message": f"Error saving score: {str(e)}"}
+    finally:
+        db.close()
+
+@api.post("/submit_score2", summary="Legacy Unity Submit Score With Answers")
+def legacy_submit_score2(
+    student_id: int = Form(...),
+    assignment_id: int = Form(...),
+    answers_json: str = Form("{}"),
+    score: int = Form(0),
+    total_points: int = Form(0)
+):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        _upsert_legacy_submission(db, student_id, assignment_id, int(score), max(int(score), int(total_points)), answers_json)
+        return {"status": "SUCCESS", "message": "Answers submitted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        return {"status": "FAIL", "message": f"Error submitting answers: {str(e)}"}
+    finally:
+        db.close()
+
+@api.post("/save_history", summary="Legacy Unity Save Question History")
+def legacy_save_history(
+    student_id: int = Form(...),
+    assignment_id: int = Form(...),
+    question_id: int = Form(...),
+    question_text: str = Form(""),
+    student_answer: str = Form(""),
+    correct_answer: str = Form(""),
+    is_correct: int = Form(0)
+):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        submission = db.query(AssignmentSubmission).filter_by(
+            assignment_id=assignment_id,
+            student_id=student_id
+        ).first()
+
+        if not submission:
+            submission = AssignmentSubmission(
+                assignment_id=assignment_id,
+                student_id=student_id,
+                score=0,
+                total_points=0,
+                answers_json="{}"
+            )
+            db.add(submission)
+            db.flush()
+
+        if question_id <= 0:
+            matched = db.query(Question).filter(
+                Question.assignment_id == assignment_id,
+                Question.question_text == question_text
+            ).first()
+            question_id = matched.id if matched else 0
+
+        if question_id > 0 and db.query(Question).filter_by(id=question_id).first():
+            db.add(StudentAnswer(
+                submission_id=submission.id,
+                question_id=question_id,
+                answer_text=student_answer or "",
+                is_correct=True if int(is_correct) == 1 else False,
+                points_earned=1 if int(is_correct) == 1 else 0
+            ))
+
+        db.commit()
+        return {"status": "success", "message": "History saved"}
+    except Exception as e:
+        db.rollback()
+        return {"status": "fail", "message": f"Failed to save history: {str(e)}"}
+    finally:
+        db.close()
+
+@api.post("/save_feedback", summary="Legacy Unity Save Feedback")
+def legacy_save_feedback(student_id: int = Form(...), message: str = Form(""), teacher_id: int | None = Form(None)):
+    _ = teacher_id
+    if not message.strip():
+        return {"status": "fail", "message": "Feedback message is required."}
+    return {"status": "success", "message": "Feedback received."}
+
+@api.get("/get_feedback_reply", summary="Legacy Unity Feedback Replies")
+def legacy_get_feedback_reply(student_id: int):
+    _ = student_id
+    return {"status": "success", "feedbacks": []}
+
+@api.get("/get_class_info", summary="Legacy Unity Class Info")
+def legacy_get_class_info(class_id: int):
+    db = SessionLocal()
+    try:
+        class_ = db.query(Class).filter_by(id=class_id).first()
+        if not class_:
+            return {"teacher_id": 0}
+        return {"teacher_id": class_.teacher_id or 0}
+    finally:
+        db.close()
+
+@api.get("/get_link", summary="Legacy Unity Saved Link")
+def legacy_get_link():
+    return {"status": "success", "url": ""}
 
 @api.get("/student/{student_id}/profile", summary="Get Student Profile for Mobile")
 def get_student_profile(student_id: int):
