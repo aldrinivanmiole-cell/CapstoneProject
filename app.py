@@ -223,7 +223,12 @@ class Teacher(Base):
         self.password = generate_password_hash(password)
 
     def check_password(self, password):
-        return check_password_hash(self.password, password)
+        if not self.password:
+            return False
+        try:
+            return check_password_hash(self.password, password)
+        except Exception:
+            return self.password == password
 
     @property
     def full_name(self):
@@ -1900,12 +1905,21 @@ def login():
             elif not teacher.check_password(password):
                 flash("Incorrect password. Please try again.", "danger")
             else:
+                try:
+                    if teacher.password == password:
+                        teacher.set_password(password)
+                        db.commit()
+                except Exception:
+                    db.rollback()
                 session["teacher_id"] = teacher.id
                 session["name"] = teacher.full_name
                 return redirect(url_for("index"))
         except SQLAlchemyError as e:
             print(f"Login error: {str(e)}")  # Log the error
             flash("An error occurred. Please try again.", "danger")
+        except Exception as e:
+            print(f"Login runtime error: {str(e)}")
+            flash("An unexpected error occurred while logging in. Please try again.", "danger")
         finally:
             db.close()
     
