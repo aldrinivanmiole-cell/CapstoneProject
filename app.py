@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker, relationship, joinedload
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import SQLAlchemyError
 import os, re, json, random, string, threading, io
+from collections import Counter
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -1111,9 +1112,16 @@ def get_student_subjects(request_data: dict):
         for enrollment in enrollments:
             class_ = db.query(Class).filter_by(id=enrollment.class_id).first()
             if class_ and (not bool(class_.is_archived)) and class_.name not in processed_class_names:
-                gameplay_type = determine_gameplay_type(class_.name)
                 latest_assignment = db.query(Assignment).filter_by(class_id=class_.id, is_archived=False).order_by(Assignment.created_at.desc()).first()
                 latest_activity_title = latest_assignment.title if latest_assignment else ""
+                latest_activity_type = ""
+                gameplay_type = determine_gameplay_type(class_.name)
+
+                if latest_assignment:
+                    latest_questions = db.query(Question).filter_by(assignment_id=latest_assignment.id).all()
+                    latest_question_types = [q.question_type for q in latest_questions]
+                    latest_activity_type = determine_assignment_gameplay_type(latest_question_types, class_.name)
+                    gameplay_type = latest_activity_type
 
                 teacher_name = "Teacher"
                 if class_.teacher:
@@ -1126,7 +1134,7 @@ def get_student_subjects(request_data: dict):
                     "teacher_name": teacher_name,
                     "gameplay_type": gameplay_type,
                     "latest_activity_title": latest_activity_title,
-                    "latest_activity_type": gameplay_type if latest_assignment else "",
+                    "latest_activity_type": latest_activity_type,
                     "has_activity": bool(latest_assignment)
                 })
                 processed_class_names.add(class_.name)
@@ -1277,8 +1285,9 @@ def get_student_assignments_by_subject(request_data: dict):
                 
                 question_list.append(q_data)
             
-            # Determine gameplay type for this subject/assignment for Unity convenience
-            gameplay_type = determine_gameplay_type(subject)
+            # Determine gameplay type from real question types (not subject heuristic)
+            question_types = [q.question_type for q in questions]
+            gameplay_type = determine_assignment_gameplay_type(question_types, subject)
 
             # Full structure (includes questions) with Unity-friendly aliases
             assignment_list.append({
@@ -1476,6 +1485,61 @@ def determine_gameplay_type(subject_name):
     # Default to MultipleChoice for unknown subjects
     else:
         return "MultipleChoice"
+
+def _normalize_question_type(question_type: str) -> str:
+    if not question_type:
+        return ""
+
+    q = str(question_type).strip().lower()
+    if q in ["multiple_choice", "multiplechoice", "mcq", "mc"]:
+        return "multiple_choice"
+    if q in ["yes_no", "yesno", "true_false", "truefalse", "tf"]:
+        return "yes_no"
+    if q in ["fill_in_blank", "fill_in_the_blank", "fill_in_the_blanks", "fillintheblank", "fib"]:
+        return "fill_in_blank"
+    if q in ["enumeration", "enumerate"]:
+        return "enumeration"
+    if q in ["identification", "identify"]:
+        return "identification"
+    if q in ["problem_solving", "problemsolving"]:
+        return "problem_solving"
+    if q in ["essay"]:
+        return "essay"
+    if q in ["short_answer", "shortanswer"]:
+        return "short_answer"
+    return q
+
+def _question_type_to_gameplay_type(question_type: str) -> str:
+    q = _normalize_question_type(question_type)
+    if q == "multiple_choice":
+        return "MultipleChoice"
+    if q == "yes_no":
+        return "YesNo"
+    if q == "fill_in_blank":
+        return "FillInBlank"
+    if q == "enumeration":
+        return "Enumeration"
+    if q == "identification":
+        return "Identification"
+    if q == "problem_solving":
+        return "ProblemSolving"
+    if q == "essay":
+        return "Essay"
+    if q == "short_answer":
+        return "Identification"
+    return ""
+
+def determine_assignment_gameplay_type(question_types, fallback_subject_name: str = ""):
+    normalized = [_normalize_question_type(q) for q in (question_types or []) if str(q).strip()]
+    normalized = [q for q in normalized if q]
+
+    if normalized:
+        most_common_qtype = Counter(normalized).most_common(1)[0][0]
+        gameplay = _question_type_to_gameplay_type(most_common_qtype)
+        if gameplay:
+            return gameplay
+
+    return determine_gameplay_type(fallback_subject_name)
 
 # --- Subject Matching Helpers (Unity compatibility) ---
 def _normalize_subject_name(name: str) -> str:
