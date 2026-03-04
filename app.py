@@ -785,12 +785,14 @@ def join_class_with_code(join_data: dict):
         return {
             "status": "success",
             "subject": class_.name,  # Unity expects 'subject' field - this is now dynamic
+            "teacher_name": class_.teacher.full_name if class_.teacher else "Teacher",
             "gameplay_type": gameplay_type,  # Unity expects 'gameplay_type' field
             "class_info": {
                 "id": class_.id,
                 "name": class_.name,
                 "section": class_.section,
-                "class_code": class_.class_code
+                "class_code": class_.class_code,
+                "teacher_name": class_.teacher.full_name if class_.teacher else "Teacher"
             },
             "message": f"Successfully joined {class_.name}"
         }
@@ -1109,12 +1111,23 @@ def get_student_subjects(request_data: dict):
         for enrollment in enrollments:
             class_ = db.query(Class).filter_by(id=enrollment.class_id).first()
             if class_ and (not bool(class_.is_archived)) and class_.name not in processed_class_names:
-                # Determine gameplay type based on subject name (dynamic)
                 gameplay_type = determine_gameplay_type(class_.name)
-                
+                latest_assignment = db.query(Assignment).filter_by(class_id=class_.id, is_archived=False).order_by(Assignment.created_at.desc()).first()
+                latest_activity_title = latest_assignment.title if latest_assignment else ""
+
+                teacher_name = "Teacher"
+                if class_.teacher:
+                    full_name = (class_.teacher.full_name or "").strip()
+                    if full_name:
+                        teacher_name = full_name
+
                 subjects.append({
                     "subject_name": class_.name,
-                    "gameplay_type": gameplay_type
+                    "teacher_name": teacher_name,
+                    "gameplay_type": gameplay_type,
+                    "latest_activity_title": latest_activity_title,
+                    "latest_activity_type": gameplay_type if latest_assignment else "",
+                    "has_activity": bool(latest_assignment)
                 })
                 processed_class_names.add(class_.name)
         
@@ -1125,6 +1138,43 @@ def get_student_subjects(request_data: dict):
             "subjects": subjects
         }
         
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        db.close()
+
+@api.get("/student/class-directory", summary="Get Student Class Directory with Teacher Names")
+def get_student_class_directory(student_id: int):
+    db = SessionLocal()
+    try:
+        api_guard(db)
+        student = db.query(Student).filter_by(id=student_id).first()
+        if not student:
+            raise HTTPException(status_code=404, detail="Student not found")
+
+        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
+        data = []
+
+        for enrollment in enrollments:
+            class_ = db.query(Class).filter_by(id=enrollment.class_id).first()
+            if not class_ or bool(class_.is_archived):
+                continue
+
+            teacher_name = "Teacher"
+            if class_.teacher:
+                full_name = (class_.teacher.full_name or "").strip()
+                if full_name:
+                    teacher_name = full_name
+
+            data.append({
+                "class_id": class_.id,
+                "subject_name": class_.name,
+                "teacher_name": teacher_name
+            })
+
+        return {"status": "success", "data": data}
     except HTTPException:
         raise
     except Exception as e:
