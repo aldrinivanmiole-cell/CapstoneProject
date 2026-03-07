@@ -1673,10 +1673,13 @@ def legacy_get_classrooms(student_id: int):
         room_no = 1
         for enrollment in enrollments:
             class_ = db.query(Class).filter_by(id=enrollment.class_id).first()
-            if not class_ or class_.is_archived:
+            if not class_ or bool(class_.is_archived):
                 continue
 
-            has_assignments = db.query(Assignment).filter_by(class_id=class_.id, is_archived=False).count() > 0
+            has_assignments = db.query(Assignment).filter(
+                Assignment.class_id == class_.id,
+                is_not_archived_filter(Assignment)
+            ).count() > 0
             rows.append({
                 "room_no": room_no,
                 "class_id": class_.id,
@@ -1704,7 +1707,10 @@ def legacy_get_assignment_types(student_id: int, class_id: int):
         if not enrolled:
             return []
 
-        assignments = db.query(Assignment).filter_by(class_id=class_id, is_archived=False).order_by(Assignment.id.asc()).all()
+        assignments = db.query(Assignment).filter(
+            Assignment.class_id == class_id,
+            is_not_archived_filter(Assignment)
+        ).order_by(Assignment.id.asc()).all()
         payload = []
         for assignment in assignments:
             submitted = db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id, student_id=student_id).first()
@@ -1728,7 +1734,10 @@ def legacy_get_assignments(student_id: int, classroom_id: int):
         if not enrolled:
             return []
 
-        assignments = db.query(Assignment).filter_by(class_id=classroom_id, is_archived=False).order_by(Assignment.id.asc()).all()
+        assignments = db.query(Assignment).filter(
+            Assignment.class_id == classroom_id,
+            is_not_archived_filter(Assignment)
+        ).order_by(Assignment.id.asc()).all()
         payload = []
         for assignment in assignments:
             first_question = db.query(Question).filter_by(assignment_id=assignment.id).order_by(Question.id.asc()).first()
