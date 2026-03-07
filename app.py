@@ -1713,10 +1713,17 @@ def legacy_get_assignment_types(student_id: int, class_id: int):
         ).order_by(Assignment.id.asc()).all()
         payload = []
         for assignment in assignments:
+            first_question = db.query(Question).filter_by(assignment_id=assignment.id).order_by(Question.id.asc()).first()
+            question_type = "multiple_choice"
+            if first_question and first_question.question_type:
+                question_type = first_question.question_type
+
             submitted = db.query(AssignmentSubmission).filter_by(assignment_id=assignment.id, student_id=student_id).first()
             payload.append({
                 "category_id": assignment.id,
                 "description": assignment.title,
+                "assignment_type": question_type,
+                "assignmentType": question_type,
                 "is_completed": True if submitted else False
             })
         return payload
