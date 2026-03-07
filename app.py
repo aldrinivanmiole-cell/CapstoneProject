@@ -2116,17 +2116,24 @@ def get_student_subjects(request_data: dict):
                 activity_count = active_assignments_query.count()
                 latest_assignment = active_assignments_query.order_by(Assignment.created_at.desc(), Assignment.id.desc()).first()
                 latest_activity = latest_assignment.title if latest_assignment else "No activity yet"
+                teacher_name = class_.teacher.full_name if class_.teacher else "Teacher"
+                has_activity = latest_assignment is not None
                 
                 subjects.append({
                     "class_id": class_.id,
                     "class_code": class_.class_code,
                     "subject": class_.name,
                     "subject_name": class_.name,
+                    "teacher_name": teacher_name,
                     "gameplay_type": gameplay_type,
                     "activity": latest_activity,
                     "activity_title": latest_activity,
                     "activity_type": gameplay_type,
-                    "activity_count": activity_count
+                    "activity_count": activity_count,
+                    # Backward-compatible fields expected by older Unity builds.
+                    "latest_activity_title": latest_assignment.title if latest_assignment else "",
+                    "latest_activity_type": gameplay_type if has_activity else "",
+                    "has_activity": has_activity
                 })
                 processed_class_names.add(class_.name)
         
