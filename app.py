@@ -2118,11 +2118,11 @@ def get_student_subjects(request_data: dict):
         enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
         
         subjects = []
-        processed_class_names = set()  # Avoid duplicates if student is enrolled multiple times
+        processed_class_ids = set()  # Avoid duplicate enrollment rows for the same class only
         
         for enrollment in enrollments:
             class_ = db.query(Class).filter_by(id=enrollment.class_id).first()
-            if class_ and (not bool(class_.is_archived)) and class_.name not in processed_class_names:
+            if class_ and (not bool(class_.is_archived)) and class_.id not in processed_class_ids:
                 # Determine gameplay type based on subject name (dynamic)
                 gameplay_type = determine_gameplay_type(class_.name)
                 active_assignments_query = db.query(Assignment).filter(
@@ -2151,7 +2151,7 @@ def get_student_subjects(request_data: dict):
                     "latest_activity_type": gameplay_type if has_activity else "",
                     "has_activity": has_activity
                 })
-                processed_class_names.add(class_.name)
+                processed_class_ids.add(class_.id)
         
         # Sort subjects alphabetically for consistent output
         subjects.sort(key=lambda x: x["subject_name"])
@@ -2167,11 +2167,11 @@ def get_student_subjects(request_data: dict):
     finally:
         db.close()
 
-@api.post("/student/assignments", summary="Get Student Assignments by Subject")
+@api.post("/student/assignments", summary="Get Student Assignments by Subject or Class")
 def get_student_assignments_by_subject(request_data: dict):
     """
-    Get all assignments for a student in a specific subject.
-    Expected payload: {"student_id": 123, "subject": "Mathematics"}
+    Get all assignments for a student in a specific class, with subject-name fallback for older clients.
+    Expected payload: {"student_id": 123, "class_id": 45} or {"student_id": 123, "subject": "Mathematics"}
     Returns: {"assignments": [{"assignment_id": 1, "title": "Basic Algebra Quiz", "questions": [...], "due_date": "2025-09-20"}, ...]}
     """
     db = SessionLocal()
@@ -2181,12 +2181,14 @@ def get_student_assignments_by_subject(request_data: dict):
             raise HTTPException(status_code=400, detail="Request must be a JSON object")
         
         student_id = request_data.get("student_id")
-        subject = request_data.get("subject", "").strip()
+        raw_subject = request_data.get("subject", "")
+        subject = raw_subject.strip() if isinstance(raw_subject, str) else ""
+        class_id = request_data.get("class_id")
         
         if not student_id:
             raise HTTPException(status_code=400, detail="student_id is required")
-        if not subject:
-            raise HTTPException(status_code=400, detail="subject is required")
+        if class_id in (None, "") and not subject:
+            raise HTTPException(status_code=400, detail="class_id or subject is required")
         
         # Ensure student_id is an integer
         try:
@@ -2194,23 +2196,48 @@ def get_student_assignments_by_subject(request_data: dict):
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="student_id must be a valid integer")
         
+        try:
+            class_id = int(class_id) if class_id not in (None, "") else None
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="class_id must be a valid integer")
+
         # Verify student exists
         student = db.query(Student).filter_by(id=student_id).first()
         if not student:
             raise HTTPException(status_code=404, detail="Student not found")
         
-        # Find classes where the student is enrolled that match the subject (flexible match)
+        # Find the enrolled classes that should be queried.
         enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
-        
+        enrolled_class_ids = {int(enrollment.class_id) for enrollment in enrollments}
         matching_class_ids = []
-        for enrollment in enrollments:
-            class_ = db.query(Class).filter_by(id=enrollment.class_id).first()
-            if class_ and (not bool(class_.is_archived)) and _subjects_match(str(class_.name), subject):
-                matching_class_ids.append(class_.id)
+        resolved_subject = subject
+
+        if class_id is not None:
+            if class_id not in enrolled_class_ids:
+                raise HTTPException(status_code=403, detail="Student is not enrolled in this class")
+
+            class_ = db.query(Class).filter_by(id=class_id).first()
+            if not class_ or bool(class_.is_archived):
+                return {
+                    "class_id": class_id,
+                    "subject": subject,
+                    "activity_count": 0,
+                    "assignments": [],
+                    "activities": []
+                }
+
+            matching_class_ids.append(class_.id)
+            resolved_subject = class_.name or subject
+        else:
+            for enrollment in enrollments:
+                class_ = db.query(Class).filter_by(id=enrollment.class_id).first()
+                if class_ and (not bool(class_.is_archived)) and _subjects_match(str(class_.name), subject):
+                    matching_class_ids.append(class_.id)
         
         if not matching_class_ids:
             # Return empty assignments if student isn't enrolled in this subject
             return {
+                "class_id": class_id,
                 "subject": subject,
                 "activity_count": 0,
                 "assignments": [],
@@ -2280,13 +2307,14 @@ def get_student_assignments_by_subject(request_data: dict):
                 question_list.append(q_data)
             
             # Determine assignment type from actual teacher-created questions
-            gameplay_type = determine_assignment_activity_type(questions, subject)
+            gameplay_type = determine_assignment_activity_type(questions, resolved_subject)
 
             # Full structure (includes questions) with Unity-friendly aliases
             assignment_list.append({
                 "assignment_id": assignment.id,
                 "id": assignment.id,  # duplicate for Unity
-                "subject": subject,
+                "class_id": assignment.class_id,
+                "subject": resolved_subject,
                 "title": assignment.title,
                 "activity": assignment.title,
                 "activity_title": assignment.title,
@@ -2305,7 +2333,8 @@ def get_student_assignments_by_subject(request_data: dict):
         assignment_list.sort(key=lambda x: (x["due_date"] or "9999-12-31", x["assignment_id"]))
         
         return {
-            "subject": subject,
+            "class_id": class_id,
+            "subject": resolved_subject,
             "activity_count": len(assignment_list),
             "assignments": assignment_list,
             "activities": assignment_list
@@ -2319,11 +2348,12 @@ def get_student_assignments_by_subject(request_data: dict):
         db.close()
 
 # --- Aliases/GET variant for Unity clients ---
-@api.get("/student/assignments", summary="Get Student Assignments by Subject (GET)")
-def get_student_assignments_by_subject_get(student_id: int, subject: str):
+@api.get("/student/assignments", summary="Get Student Assignments by Subject or Class (GET)")
+def get_student_assignments_by_subject_get(student_id: int, subject: str = "", class_id: int | None = None):
     return get_student_assignments_by_subject({
         "student_id": student_id,
-        "subject": subject
+        "subject": subject,
+        "class_id": class_id
     })
 
 @api.post("/api/student/assignments", summary="Alias: POST /api/student/assignments")
@@ -2331,10 +2361,11 @@ def get_student_assignments_by_subject_api_alias(payload: dict):
     return get_student_assignments_by_subject(payload)
 
 @api.get("/api/student/assignments", summary="Alias: GET /api/student/assignments")
-def get_student_assignments_by_subject_api_get_alias(student_id: int, subject: str):
+def get_student_assignments_by_subject_api_get_alias(student_id: int, subject: str = "", class_id: int | None = None):
     return get_student_assignments_by_subject({
         "student_id": student_id,
-        "subject": subject
+        "subject": subject,
+        "class_id": class_id
     })
 
 @api.get("/student/subjects", summary="Get Student's Enrolled Subjects (GET)")
