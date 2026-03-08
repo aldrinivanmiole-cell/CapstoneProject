@@ -3849,6 +3849,7 @@ def take_assignment(assignment_id):
             # Process quiz submission
             student_name = request.form.get("student_name", "Anonymous")
             answers = {}
+            student_answer_rows = []
             score = 0
             total_points = 0
             
@@ -3913,6 +3914,14 @@ def take_assignment(assignment_id):
                         'correct': is_correct,
                         'points': points_earned
                     }
+
+                    # Keep detailed per-question rows for teacher review and monitoring.
+                    student_answer_rows.append({
+                        "question_id": question.id,
+                        "answer_text": student_answer,
+                        "is_correct": is_correct,
+                        "points_earned": points_earned
+                    })
             
             # Save submission
             submission = AssignmentSubmission(
@@ -3923,6 +3932,16 @@ def take_assignment(assignment_id):
                 answers_json=json.dumps(answers)
             )
             db.add(submission)
+            db.flush()
+
+            for item in student_answer_rows:
+                db.add(StudentAnswer(
+                    submission_id=submission.id,
+                    question_id=item["question_id"],
+                    answer_text=item["answer_text"],
+                    is_correct=item["is_correct"],
+                    points_earned=item["points_earned"]
+                ))
             db.commit()
             flash("Quiz submitted successfully!", "success")
             return redirect(url_for("assignment_results", assignment_id=assignment_id))
@@ -4158,10 +4177,19 @@ def view_essay_submissions(assignment_id):
             flash("Access denied", "danger")
             return redirect(url_for("index"))
 
-        essay_question_ids = [q.id for q in assignment.questions if q.question_type == "essay"]
+        essay_questions = [q for q in assignment.questions if q.question_type == "essay"]
+        essay_question_ids = [q.id for q in essay_questions]
         submissions = []
 
         if essay_question_ids:
+            assignment_submissions = (
+                db.query(AssignmentSubmission)
+                .options(joinedload(AssignmentSubmission.student))
+                .filter(AssignmentSubmission.assignment_id == assignment_id)
+                .order_by(AssignmentSubmission.submitted_at.desc())
+                .all()
+            )
+
             essay_answers = (
                 db.query(StudentAnswer)
                 .join(AssignmentSubmission, StudentAnswer.submission_id == AssignmentSubmission.id)
@@ -4174,6 +4202,56 @@ def view_essay_submissions(assignment_id):
                 .order_by(StudentAnswer.created_at.desc())
                 .all()
             )
+
+            # Fast lookup for existing normalized answer rows.
+            answer_map = {(ans.submission_id, ans.question_id): ans for ans in essay_answers}
+
+            # Backfill legacy web submissions that only stored answers_json.
+            needs_commit = False
+            for sub in assignment_submissions:
+                payload = {}
+                raw_json = sub.answers_json or "{}"
+                try:
+                    parsed = json.loads(raw_json)
+                    if isinstance(parsed, dict):
+                        payload = parsed
+                except Exception:
+                    payload = {}
+
+                for q in essay_questions:
+                    if (sub.id, q.id) in answer_map:
+                        continue
+
+                    raw_answer = payload.get(str(q.id), payload.get(q.id))
+                    answer_text = ""
+                    if isinstance(raw_answer, dict):
+                        answer_text = str(
+                            raw_answer.get("answer")
+                            or raw_answer.get("student_answer")
+                            or ""
+                        ).strip()
+                    elif raw_answer is not None:
+                        answer_text = str(raw_answer).strip()
+
+                    if not answer_text:
+                        continue
+
+                    created = StudentAnswer(
+                        submission_id=sub.id,
+                        question_id=q.id,
+                        answer_text=answer_text,
+                        is_correct=None,
+                        points_earned=0,
+                        created_at=sub.submitted_at
+                    )
+                    db.add(created)
+                    db.flush()
+                    answer_map[(sub.id, q.id)] = created
+                    essay_answers.append(created)
+                    needs_commit = True
+
+            if needs_commit:
+                db.commit()
 
             for answer in essay_answers:
                 points = answer.points_earned if answer.points_earned is not None else 0
