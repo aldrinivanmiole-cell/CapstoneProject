@@ -2186,6 +2186,8 @@ def get_student_subjects(request_data: dict):
                 latest_activity = latest_assignment.title if latest_assignment else "No activity yet"
                 teacher_name = class_.teacher.full_name if class_.teacher else "Teacher"
                 has_activity = latest_assignment is not None
+                latest_due_date = latest_assignment.due_date.isoformat() if latest_assignment and latest_assignment.due_date else None
+                latest_due_date_display = latest_assignment.due_date.strftime("%b %d, %Y %I:%M %p") if latest_assignment and latest_assignment.due_date else "No deadline"
                 
                 subjects.append({
                     "class_id": class_.id,
@@ -2198,6 +2200,10 @@ def get_student_subjects(request_data: dict):
                     "activity_title": latest_activity,
                     "activity_type": gameplay_type,
                     "activity_count": activity_count,
+                    "latest_activity_due_date": latest_due_date,
+                    "activity_due_date": latest_due_date,
+                    "latest_activity_deadline": latest_due_date,
+                    "latest_activity_due_date_display": latest_due_date_display,
                     # Backward-compatible fields expected by older Unity builds.
                     "latest_activity_title": latest_assignment.title if latest_assignment else "",
                     "latest_activity_type": gameplay_type if has_activity else "",
@@ -2362,6 +2368,9 @@ def get_student_assignments_by_subject(request_data: dict):
             gameplay_type = determine_assignment_activity_type(questions, resolved_subject)
 
             # Full structure (includes questions) with Unity-friendly aliases
+            due_date_iso = assignment.due_date.isoformat() if assignment.due_date else None
+            due_date_display = assignment.due_date.strftime("%b %d, %Y %I:%M %p") if assignment.due_date else "No deadline"
+            is_overdue = bool(assignment.due_date and assignment.due_date < datetime.utcnow())
             assignment_list.append({
                 "assignment_id": assignment.id,
                 "id": assignment.id,  # duplicate for Unity
@@ -2374,7 +2383,12 @@ def get_student_assignments_by_subject(request_data: dict):
                 "assignment_type": gameplay_type,
                 "activity_type": gameplay_type,
                 "type": gameplay_type,
-                "due_date": assignment.due_date.isoformat() if assignment.due_date else None,
+                "due_date": due_date_iso,
+                "deadline": due_date_iso,
+                "due_at": due_date_iso,
+                "due_date_display": due_date_display,
+                "deadline_display": due_date_display,
+                "is_overdue": is_overdue,
                 "points": assignment.points,
                 "total_questions": len(question_list),
                 "total_points": sum(q.points for q in questions),
