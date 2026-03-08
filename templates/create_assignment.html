@@ -218,7 +218,8 @@ function addQuestionOfType(type) {
   };
   
   if (type === 'multiple_choice') {
-    question.options = [''];
+    question.options = ['', '', '', ''];
+    question.correct_answer_index = 0;
   } else if (type === 'fill_in_the_blanks') {
     question.correct_answers = [];
   }
@@ -245,6 +246,11 @@ function createCustomTemplate() {
 }
 
 function renderQuestions() {
+  const optionLabel = (index) => {
+    if (index >= 0 && index < 26) return String.fromCharCode(65 + index);
+    return `#${index + 1}`;
+  };
+
   const container = document.getElementById('questions-container');
   container.innerHTML = '';
   questions.forEach((q, index) => {
@@ -317,15 +323,19 @@ function renderQuestions() {
             const row = document.createElement('div');
             row.className = 'option-input';
             row.innerHTML = `
+              <span class="badge bg-secondary align-self-center">${optionLabel(oi)}</span>
               <input type="text" class="form-control option-text" value="${opt}" placeholder="Option ${oi + 1}">
               <div class="form-check">
                 <input class="form-check-input" type="radio" name="correct_${q.id}" id="correct_${q.id}_${oi}" ${q.correct_answer_index === oi ? 'checked' : ''}>
                 <label class="form-check-label" for="correct_${q.id}_${oi}">Correct</label>
               </div>
-              <span class="material-icons text-danger remove-opt" data-idx="${oi}">close</span>`;
+              <span class="material-icons text-danger remove-opt" data-idx="${oi}" title="Remove option">close</span>`;
             optContainer.appendChild(row);
             
             row.querySelector('.remove-opt').onclick = () => { 
+              if (q.options.length <= 2) {
+                return;
+              }
               q.options.splice(oi,1); 
               if (!q.options.length) q.options.push('');
               if (q.correct_answer_index >= q.options.length) {
@@ -343,6 +353,14 @@ function renderQuestions() {
                 q.correct_answer_index = oi;
               }
             };
+
+            if (q.options.length <= 2) {
+              const removeBtn = row.querySelector('.remove-opt');
+              if (removeBtn) {
+                removeBtn.style.opacity = '0.4';
+                removeBtn.style.cursor = 'not-allowed';
+              }
+            }
           });
         }
         renderOpts();
@@ -755,12 +773,22 @@ document.getElementById('assignmentForm').onsubmit = function(e){
 
     if (q.type === 'multiple_choice') {
       q.options = (q.options || []).map(v => String(v || '').trim()).filter(Boolean);
+      if (q.options.length < 2) {
+        e.preventDefault();
+        alert('Multiple Choice questions need at least 2 options.');
+        return;
+      }
       if (!Number.isInteger(q.correct_answer_index) || q.correct_answer_index < 0 || q.correct_answer_index >= q.options.length) {
         q.correct_answer_index = q.options.length ? 0 : -1;
       }
       q.correct_answers = (q.correct_answer_index >= 0 && q.correct_answer_index < q.options.length)
         ? [q.options[q.correct_answer_index]]
         : [];
+      if (!q.correct_answers.length) {
+        e.preventDefault();
+        alert('Please select one correct answer for each Multiple Choice question.');
+        return;
+      }
     }
 
     if (q.type === 'fill_in_the_blanks') {
