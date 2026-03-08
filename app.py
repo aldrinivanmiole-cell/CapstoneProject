@@ -426,6 +426,29 @@ class Enrollment(Base):
     student = relationship("Student", back_populates="enrollments")
     class_ = relationship("Class", back_populates="enrollments")
 
+class Feedback(Base):
+    __tablename__ = "feedbacks"
+    id = Column(Integer, primary_key=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    teacher_id = Column(Integer, ForeignKey("teachers.id", ondelete="CASCADE"), nullable=True)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    student = relationship("Student")
+    teacher = relationship("Teacher")
+    replies = relationship("FeedbackReply", back_populates="feedback", cascade="all, delete-orphan", order_by="FeedbackReply.created_at.asc()")
+
+class FeedbackReply(Base):
+    __tablename__ = "feedback_replies"
+    id = Column(Integer, primary_key=True)
+    feedback_id = Column(Integer, ForeignKey("feedbacks.id", ondelete="CASCADE"), nullable=False)
+    teacher_id = Column(Integer, ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False)
+    reply_message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    feedback = relationship("Feedback", back_populates="replies")
+    teacher = relationship("Teacher")
+
 class AssignmentSubmission(Base):
     __tablename__ = "assignment_submissions"
     id = Column(Integer, primary_key=True)
@@ -2028,15 +2051,87 @@ def legacy_save_history(
 
 @api.post("/save_feedback", summary="Legacy Unity Save Feedback")
 def legacy_save_feedback(student_id: int = Form(...), message: str = Form(""), teacher_id: int | None = Form(None)):
-    _ = teacher_id
-    if not message.strip():
+    clean_message = (message or "").strip()
+    if not clean_message:
         return {"status": "fail", "message": "Feedback message is required."}
-    return {"status": "success", "message": "Feedback received."}
+
+    db = SessionLocal()
+    try:
+        student = db.query(Student).filter_by(id=student_id).first()
+        if not student:
+            return {"status": "fail", "message": "Student not found."}
+
+        resolved_teacher_id = None
+        if teacher_id and int(teacher_id) > 0:
+            valid_teacher = db.query(Teacher.id).filter_by(id=int(teacher_id)).first()
+            if valid_teacher:
+                resolved_teacher_id = int(teacher_id)
+        if resolved_teacher_id is None:
+            enrollment = db.query(Enrollment).join(Class, Enrollment.class_id == Class.id).filter(
+                Enrollment.student_id == student_id
+            ).order_by(Enrollment.enrolled_at.desc()).first()
+            if enrollment and enrollment.class_:
+                resolved_teacher_id = enrollment.class_.teacher_id
+
+        new_feedback = Feedback(
+            student_id=student_id,
+            teacher_id=resolved_teacher_id,
+            message=clean_message
+        )
+        db.add(new_feedback)
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": "Feedback received.",
+            "feedback_id": new_feedback.id
+        }
+    except Exception as e:
+        db.rollback()
+        return {"status": "fail", "message": f"Failed to save feedback: {str(e)}"}
+    finally:
+        db.close()
 
 @api.get("/get_feedback_reply", summary="Legacy Unity Feedback Replies")
 def legacy_get_feedback_reply(student_id: int):
-    _ = student_id
-    return {"status": "success", "feedbacks": []}
+    db = SessionLocal()
+    try:
+        feedbacks = db.query(Feedback).options(
+            joinedload(Feedback.replies).joinedload(FeedbackReply.teacher)
+        ).filter(
+            Feedback.student_id == student_id
+        ).order_by(Feedback.created_at.desc()).all()
+
+        serialized = []
+        for feedback in feedbacks:
+            replies = []
+            for reply in feedback.replies:
+                teacher_name = reply.teacher.full_name if reply.teacher else "Teacher"
+                replies.append({
+                    "id": reply.id,
+                    "reply_message": reply.reply_message,
+                    "teacher_name": teacher_name,
+                    "created_at": reply.created_at.isoformat() if reply.created_at else ""
+                })
+
+            latest_reply = replies[-1] if replies else None
+            serialized.append({
+                "id": feedback.id,
+                "feedback_id": feedback.id,
+                "message": feedback.message,
+                "student_feedback": feedback.message,
+                "created_at": feedback.created_at.isoformat() if feedback.created_at else "",
+                "date_submitted": feedback.created_at.isoformat() if feedback.created_at else "",
+                "teacher_reply": latest_reply["reply_message"] if latest_reply else "",
+                "date_replied": latest_reply["created_at"] if latest_reply else "",
+                "replies": replies
+            })
+
+        return {"status": "success", "feedbacks": serialized}
+    except Exception as e:
+        return {"status": "fail", "message": f"Failed to load feedback replies: {str(e)}", "feedbacks": []}
+    finally:
+        db.close()
 
 @api.get("/get_class_info", summary="Legacy Unity Class Info")
 def legacy_get_class_info(class_id: int):
@@ -2310,6 +2405,11 @@ def get_student_assignments_by_subject(request_data: dict):
         
         assignment_list = []
         for assignment in assignments:
+            existing_submission = db.query(AssignmentSubmission).filter_by(
+                assignment_id=assignment.id,
+                student_id=student_id
+            ).first()
+
             # Get questions for this assignment
             questions = db.query(Question).filter_by(assignment_id=assignment.id).all()
             
@@ -2389,6 +2489,9 @@ def get_student_assignments_by_subject(request_data: dict):
                 "due_date_display": due_date_display,
                 "deadline_display": due_date_display,
                 "is_overdue": is_overdue,
+                "is_submitted": existing_submission is not None,
+                "isSubmitted": existing_submission is not None,
+                "is_completed": existing_submission is not None,
                 "points": assignment.points,
                 "total_questions": len(question_list),
                 "total_points": sum(q.points for q in questions),
@@ -2773,6 +2876,102 @@ def logout():
     session.clear()
     flash("You have been logged out successfully", "success")
     return redirect(url_for("login"))
+
+@app.route("/feedback")
+@require_teacher_or_admin
+def feedback_list():
+    db = SessionLocal()
+    try:
+        teacher_id = session.get("teacher_id")
+        is_admin = bool(session.get("admin_id"))
+
+        query = db.query(Feedback).options(
+            joinedload(Feedback.student),
+            joinedload(Feedback.replies).joinedload(FeedbackReply.teacher)
+        )
+
+        if not is_admin:
+            query = query.filter(Feedback.teacher_id == teacher_id)
+
+        feedbacks = query.order_by(Feedback.created_at.desc()).all()
+        archived_count = 0
+        if teacher_id:
+            archived_count = db.query(Class).filter_by(teacher_id=teacher_id, is_archived=True).count()
+
+        return render_template("feedback_list.html", feedbacks=feedbacks, archived_count=archived_count)
+    except Exception as e:
+        flash(f"Failed to load feedback list: {str(e)}", "danger")
+        return redirect(url_for("index"))
+    finally:
+        db.close()
+
+@app.route("/feedback/reply/<int:feedback_id>", methods=["POST"])
+@require_teacher_or_admin
+def feedback_reply(feedback_id):
+    reply_message = request.form.get("reply_message", "").strip()
+    if not reply_message:
+        flash("Reply message is required.", "danger")
+        return redirect(url_for("feedback_list"))
+
+    db = SessionLocal()
+    try:
+        feedback = db.query(Feedback).filter_by(id=feedback_id).first()
+        if not feedback:
+            flash("Feedback not found.", "danger")
+            return redirect(url_for("feedback_list"))
+
+        if not session.get("admin_id"):
+            if not feedback.teacher_id or feedback.teacher_id != session.get("teacher_id"):
+                flash("You are not allowed to reply to this feedback.", "danger")
+                return redirect(url_for("feedback_list"))
+
+        active_teacher_id = session.get("teacher_id")
+        if not active_teacher_id:
+            flash("Teacher account not found in session.", "danger")
+            return redirect(url_for("feedback_list"))
+
+        new_reply = FeedbackReply(
+            feedback_id=feedback.id,
+            teacher_id=active_teacher_id,
+            reply_message=reply_message
+        )
+        db.add(new_reply)
+        db.commit()
+
+        flash("Reply sent successfully.", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"Failed to send reply: {str(e)}", "danger")
+    finally:
+        db.close()
+
+    return redirect(url_for("feedback_list"))
+
+@app.route("/feedback/delete/<int:feedback_id>", methods=["POST"])
+@require_teacher_or_admin
+def feedback_delete(feedback_id):
+    db = SessionLocal()
+    try:
+        feedback = db.query(Feedback).filter_by(id=feedback_id).first()
+        if not feedback:
+            flash("Feedback not found.", "danger")
+            return redirect(url_for("feedback_list"))
+
+        if not session.get("admin_id"):
+            if not feedback.teacher_id or feedback.teacher_id != session.get("teacher_id"):
+                flash("You are not allowed to delete this feedback.", "danger")
+                return redirect(url_for("feedback_list"))
+
+        db.delete(feedback)
+        db.commit()
+        flash("Feedback deleted successfully.", "success")
+    except Exception as e:
+        db.rollback()
+        flash(f"Failed to delete feedback: {str(e)}", "danger")
+    finally:
+        db.close()
+
+    return redirect(url_for("feedback_list"))
 
 @app.route("/create_class", methods=["GET", "POST"])
 def create_class():

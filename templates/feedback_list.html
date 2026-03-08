@@ -53,7 +53,7 @@
                           {{ feedback.student.name if feedback.student else 'Unknown Student' }}
                           <span class="badge bg-info ms-2">
                             <span class="material-icons" style="font-size: 14px; vertical-align: middle;">person</span>
-                            {{ feedback.student.username if feedback.student and feedback.student.username else 'N/A' }}
+                            ID {{ feedback.student.id if feedback.student else 'N/A' }}
                           </span>
                         </h5>
                         <small class="text-muted">
@@ -140,10 +140,10 @@
                         </div>
                         {% endif %}
 
-                        {% if feedback.student and feedback.student.gender %}
+                        {% if feedback.student and feedback.student.grade_level %}
                         <div class="mb-3">
-                          <small class="text-muted d-block mb-1">Gender</small>
-                          <span>{{ feedback.student.gender }}</span>
+                          <small class="text-muted d-block mb-1">Grade Level</small>
+                          <span>{{ feedback.student.grade_level }}</span>
                         </div>
                         {% endif %}
 
