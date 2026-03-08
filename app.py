@@ -4144,6 +4144,101 @@ def assignment_results(assignment_id):
     finally:
         db.close()
 
+@app.route("/assignment/<int:assignment_id>/essay_submissions")
+@require_teacher_or_admin
+def view_essay_submissions(assignment_id):
+    db = SessionLocal()
+    try:
+        assignment = db.query(Assignment).filter_by(id=assignment_id).first()
+        if not assignment:
+            flash("Assignment not found", "danger")
+            return redirect(url_for("index"))
+
+        if not session.get("admin_id") and assignment.class_.teacher_id != session.get("teacher_id"):
+            flash("Access denied", "danger")
+            return redirect(url_for("index"))
+
+        essay_question_ids = [q.id for q in assignment.questions if q.question_type == "essay"]
+        submissions = []
+
+        if essay_question_ids:
+            essay_answers = (
+                db.query(StudentAnswer)
+                .join(AssignmentSubmission, StudentAnswer.submission_id == AssignmentSubmission.id)
+                .options(
+                    joinedload(StudentAnswer.question),
+                    joinedload(StudentAnswer.submission).joinedload(AssignmentSubmission.student)
+                )
+                .filter(AssignmentSubmission.assignment_id == assignment_id)
+                .filter(StudentAnswer.question_id.in_(essay_question_ids))
+                .order_by(StudentAnswer.created_at.desc())
+                .all()
+            )
+
+            for answer in essay_answers:
+                points = answer.points_earned if answer.points_earned is not None else 0
+                max_points = answer.question.points if answer.question and answer.question.points is not None else 0
+                submissions.append({
+                    "id": answer.id,
+                    "student": answer.submission.student if answer.submission else None,
+                    "answered_at": answer.created_at,
+                    "is_correct": 1 if bool(answer.is_correct) else 0,
+                    "question_text": answer.question.question_text if answer.question else "",
+                    "student_answer": answer.answer_text or "",
+                    "correct_answer": f"{points}/{max_points} points" if bool(answer.is_correct) else "Pending teacher review"
+                })
+
+        return render_template("view_essay_submissions.html", assignment=assignment, submissions=submissions)
+    finally:
+        db.close()
+
+@app.route("/update_essay_feedback/<int:answer_id>", methods=["POST"])
+@require_teacher_or_admin
+def update_essay_feedback(answer_id):
+    db = SessionLocal()
+    try:
+        answer = (
+            db.query(StudentAnswer)
+            .options(joinedload(StudentAnswer.question), joinedload(StudentAnswer.submission).joinedload(AssignmentSubmission.assignment))
+            .filter(StudentAnswer.id == answer_id)
+            .first()
+        )
+
+        if not answer or not answer.question or not answer.submission:
+            flash("Essay response not found", "danger")
+            return redirect(url_for("index"))
+
+        assignment = answer.submission.assignment
+        if not assignment:
+            flash("Assignment not found", "danger")
+            return redirect(url_for("index"))
+
+        if not session.get("admin_id") and assignment.class_.teacher_id != session.get("teacher_id"):
+            flash("Access denied", "danger")
+            return redirect(url_for("index"))
+
+        raw_score = request.form.get("score", "0")
+        status = request.form.get("is_correct", "0")
+
+        try:
+            score = int(raw_score)
+        except ValueError:
+            score = 0
+
+        max_points = answer.question.points if answer.question.points is not None else score
+        answer.points_earned = max(0, min(score, max_points))
+        answer.is_correct = str(status) == "1"
+
+        db.commit()
+        flash("Essay feedback updated", "success")
+        return redirect(url_for("view_essay_submissions", assignment_id=assignment.id))
+    except SQLAlchemyError:
+        db.rollback()
+        flash("Failed to update essay feedback", "danger")
+        return redirect(url_for("index"))
+    finally:
+        db.close()
+
 # Server Startup
 
 # Combined ASGI application for production
