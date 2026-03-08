@@ -145,6 +145,39 @@ def validate_assignment_data(title, questions_json):
     except json.JSONDecodeError:
         return False, "Invalid questions data"
 
+def parse_due_date_input(raw_value):
+    """Parse date/datetime-local form input into datetime, or None if invalid/empty."""
+    if raw_value is None:
+        return None
+
+    text_value = str(raw_value).strip()
+    if not text_value:
+        return None
+
+    candidates = [text_value]
+    if text_value.endswith("Z"):
+        candidates.append(text_value[:-1])
+
+    for candidate in candidates:
+        try:
+            return datetime.fromisoformat(candidate)
+        except Exception:
+            pass
+
+    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text_value, fmt)
+        except Exception:
+            continue
+
+    return None
+
+def is_assignment_overdue(assignment, now=None):
+    if not assignment or not assignment.due_date:
+        return False
+    current_time = now or datetime.utcnow()
+    return assignment.due_date < current_time
+
 def create_question_with_answers(db, assignment_id, question_data):
     """Create a question with its answers/options"""
     q_text = question_data.get("text", "").strip()
@@ -3508,6 +3541,7 @@ def create_assignment(db, class_id):
 
     if request.method == "POST":
         title = request.form.get("title", "").strip()
+        due_date_raw = request.form.get("due_date", "").strip()
         questions_json = request.form.get("questions", "[]")
         
         # Validate input data
@@ -3515,11 +3549,20 @@ def create_assignment(db, class_id):
         if not is_valid:
             flash(result, "danger")
             return render_template("create_assignment.html", class_=class_)
+
+        due_date = parse_due_date_input(due_date_raw)
+        if due_date_raw and due_date is None:
+            flash("Invalid deadline format. Please select a valid date and time.", "danger")
+            return render_template("create_assignment.html", class_=class_)
+
+        if due_date and due_date <= datetime.utcnow():
+            flash("Deadline must be in the future.", "danger")
+            return render_template("create_assignment.html", class_=class_)
         
         questions_data = result
 
         # Create assignment
-        assignment = Assignment(class_id=class_id, title=title)
+        assignment = Assignment(class_id=class_id, title=title, due_date=due_date)
         db.add(assignment)
         db.flush()
 
@@ -3600,6 +3643,7 @@ def edit_assignment(assignment_id):
         
         if request.method == "POST":
             title = request.form.get("title", "").strip()
+            due_date_raw = request.form.get("due_date", "").strip()
             # description removed
             questions_json = request.form.get("questions", "[]")
             
@@ -3612,9 +3656,19 @@ def edit_assignment(assignment_id):
             except json.JSONDecodeError:
                 flash("Invalid questions data", "danger")
                 return render_template("edit_assignment.html", assignment=assignment)
+
+            due_date = parse_due_date_input(due_date_raw)
+            if due_date_raw and due_date is None:
+                flash("Invalid deadline format. Please select a valid date and time.", "danger")
+                return render_template("edit_assignment.html", assignment=assignment)
+
+            if due_date and due_date <= datetime.utcnow():
+                flash("Deadline must be in the future.", "danger")
+                return render_template("edit_assignment.html", assignment=assignment)
             
             # Update quiz details
             assignment.title = title
+            assignment.due_date = due_date
             # description removed
             
             # Delete existing questions and rebuild
@@ -3844,6 +3898,10 @@ def take_assignment(assignment_id):
         if existing_submission:
             flash("You have already submitted this assignment. Retakes are not allowed.", "warning")
             return redirect(url_for("view_assignment", assignment_id=assignment_id))
+
+        if is_assignment_overdue(assignment):
+            flash("This assignment is closed because the deadline has passed.", "warning")
+            return redirect(url_for("index"))
 
         if request.method == "POST":
             # Process quiz submission

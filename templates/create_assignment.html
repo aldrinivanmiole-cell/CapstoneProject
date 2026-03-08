@@ -115,7 +115,12 @@
 <form id="assignmentForm" method="post">
   <div class="mb-3">
     <label class="form-label">assignment title</label>
-    <input type="text" class="form-control" name="title" required>
+    <input type="text" class="form-control" name="title" value="{{ request.form.get('title', '') }}" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Deadline (optional)</label>
+    <input type="datetime-local" class="form-control" name="due_date" value="{{ request.form.get('due_date', '') }}">
+    <div class="form-text">Students can no longer submit once this deadline has passed.</div>
   </div>
   <div class="mb-3">
     <label class="form-label">Description (optional)</label>

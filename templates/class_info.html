@@ -188,6 +188,11 @@
                                         <div>
                                             <h6 class="mb-1">{{ stat.assignment.title }}</h6>
                                             <small class="text-muted">{{ stat.assignment.questions|length }} questions • {{ stat.assignment.questions|sum(attribute='points') }} points</small>
+                                            {% if stat.assignment.due_date %}
+                                            <div><small class="text-muted">Deadline: {{ stat.assignment.due_date.strftime('%b %d, %Y %I:%M %p') }}</small></div>
+                                            {% else %}
+                                            <div><small class="text-muted">Deadline: No deadline</small></div>
+                                            {% endif %}
                                         </div>
                                     </div>
                                 </div>

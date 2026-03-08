@@ -5,6 +5,11 @@
   <div class="text-center mb-4">
     <h1 class="h3 mb-2">{{ assignment.title }}</h1>
     <p class="text-muted mb-0">{{ assignment.class_.name }} • {{ questions|length }} question{{ 's' if questions|length != 1 else '' }}</p>
+    {% if assignment.due_date %}
+    <p class="text-muted mb-0">Deadline: {{ assignment.due_date.strftime('%b %d, %Y %I:%M %p') }}</p>
+    {% else %}
+    <p class="text-muted mb-0">Deadline: No deadline</p>
+    {% endif %}
     
   </div>
   <div class="d-flex justify-content-between align-items-center mb-4">
@@ -183,6 +188,12 @@
               <small class="text-muted">Total Points</small>
             </div>
           </div>
+          <hr>
+          {% if assignment.due_date %}
+          <div class="small text-muted">Deadline: {{ assignment.due_date.strftime('%b %d, %Y %I:%M %p') }}</div>
+          {% else %}
+          <div class="small text-muted">Deadline: No deadline</div>
+          {% endif %}
           <hr>
           <div class="d-grid">
             <a href="{{ url_for('assignment_monitor', assignment_id=assignment.id) }}" class="btn btn-primary mb-2">
