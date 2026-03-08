@@ -122,10 +122,6 @@
     <input type="datetime-local" class="form-control" name="due_date" value="{{ request.form.get('due_date', '') }}">
     <div class="form-text">Students can no longer submit once this deadline has passed.</div>
   </div>
-  <div class="mb-3">
-    <label class="form-label">Description (optional)</label>
-    <textarea class="form-control" name="description" rows="2"></textarea>
-  </div>
 
   <hr class="my-4">
   <h2 class="h5 mb-3">Questions</h2>
@@ -196,6 +192,14 @@ const typeOptions = [
   {value: 'essay', label: 'Essay'}
 ];
 
+const wrongMinigameOptions = [
+  { value: 'randomized', label: 'Randomized' },
+  { value: 'pacman', label: 'Pacman' },
+  { value: 'match_the_shape', label: 'Match the Shape' },
+  { value: 'flappy_bird', label: 'Flappy Bird' },
+  { value: 'memory_button', label: 'Memory Button' }
+];
+
 function createTemplate(type, count) {
   questions = []; // Clear existing questions
   
@@ -217,6 +221,7 @@ function addQuestionOfType(type) {
     type: type, 
     points: 1, 
     help_video_url: '',
+    wrong_minigame: 'randomized',
     correct_answers: [],
     slot_count: 4,
     word_bank: []
@@ -271,18 +276,24 @@ function renderQuestions() {
         <textarea class="form-control question-text" rows="2">${q.text || ''}</textarea>
       </div>
       <div class="row g-3 mb-3">
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="form-label">Type</label>
           <select class="form-select question-type" ${selectedQuestionType ? 'disabled' : ''}>
             ${typeOptions.map(t => `<option value="${t.value}" ${t.value===q.type?'selected':''}>${t.label}</option>`).join('')}
           </select>
           ${selectedQuestionType ? '<small class="text-muted">Type locked for consistency</small>' : ''}
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="form-label">Points</label>
           <input type="number" min="1" class="form-control question-points" value="${q.points}">
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
+          <label class="form-label">Wrong Answer Minigame</label>
+          <select class="form-select wrong-minigame">
+            ${wrongMinigameOptions.map(m => `<option value="${m.value}" ${((q.wrong_minigame || 'randomized')===m.value)?'selected':''}>${m.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="col-md-3">
           <label class="form-label">Supplementary Link (optional)</label>
           <input type="url" class="form-control help-video" value="${q.help_video_url || ''}" placeholder="https://youtube.com/... or https://drive.google.com/...">
         </div>
@@ -625,6 +636,7 @@ function renderQuestions() {
       }
     };
     card.querySelector('.question-points').oninput = e => { q.points = parseInt(e.target.value)||1; };
+    card.querySelector('.wrong-minigame').onchange = e => { q.wrong_minigame = e.target.value || 'randomized'; };
     card.querySelector('.help-video').oninput = e => { q.help_video_url = e.target.value; };
     renderExtra();
   });
@@ -775,6 +787,7 @@ document.getElementById('assignmentForm').onsubmit = function(e){
 
   questions.forEach(q => {
     q.help_video_url = (q.help_video_url || '').trim();
+    q.wrong_minigame = (q.wrong_minigame || 'randomized').trim() || 'randomized';
 
     if (q.type === 'multiple_choice') {
       q.options = (q.options || []).map(v => String(v || '').trim()).filter(Boolean);

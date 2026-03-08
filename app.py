@@ -123,6 +123,20 @@ def parse_word_bank_json(word_bank_json):
 def is_not_archived_filter(model):
     return (model.is_archived == False) | (model.is_archived.is_(None))
 
+def normalize_wrong_minigame_choice(value):
+    raw = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if raw in {"pacman", "pacmanminigame"}:
+        return "pacman"
+    if raw in {"match_the_shape", "matchshape", "match_the_shapes", "match"}:
+        return "match_the_shape"
+    if raw in {"flappy_bird", "flappy", "gamescreen"}:
+        return "flappy_bird"
+    if raw in {"memory_button", "memory_buttons", "memory", "memorybuttonsminigame"}:
+        return "memory_button"
+    if raw in {"random", "randomized", "randomise", "randomize", ""}:
+        return "randomized"
+    return "randomized"
+
 # ---- Common Database Operations ----
 def get_class_for_teacher(db, class_id, teacher_id=None, allow_admin=False):
     """Get class that belongs to teacher, or any class if admin"""
@@ -184,6 +198,7 @@ def create_question_with_answers(db, assignment_id, question_data):
     q_type = question_data.get("type")
     points = int(question_data.get("points", 1))
     help_video_url = question_data.get("help_video_url", "").strip()
+    wrong_minigame = normalize_wrong_minigame_choice(question_data.get("wrong_minigame", "randomized"))
 
     # Validate question type
     valid_types = ["multiple_choice", "identification", "enumeration", "problem_solving", "essay", "fill_in_the_blanks", "yes_no"]
@@ -196,6 +211,7 @@ def create_question_with_answers(db, assignment_id, question_data):
         question_type=q_type,
         points=points,
         help_video_url=help_video_url,
+        wrong_minigame=wrong_minigame,
         slot_count=0,
         word_bank_json=None
     )
@@ -376,6 +392,7 @@ class Question(Base):
     question_type = Column(String(20), nullable=False)  # multiple_choice, essay, short_answer
     points = Column(Integer, default=1)
     help_video_url = Column(String(255))  # YouTube or other video URL
+    wrong_minigame = Column(String(32), default="randomized")
     slot_count = Column(Integer, default=0)
     word_bank_json = Column(Text)
     assignment = relationship("Assignment", back_populates="questions")
@@ -545,6 +562,9 @@ def upgrade_schema():
             if 'word_bank_json' not in question_cols:
                 conn.execute(text("ALTER TABLE questions ADD COLUMN word_bank_json TEXT"))
                 print("Added column questions.word_bank_json")
+            if 'wrong_minigame' not in question_cols:
+                conn.execute(text("ALTER TABLE questions ADD COLUMN wrong_minigame VARCHAR(32) DEFAULT 'randomized'"))
+                print("Added column questions.wrong_minigame")
         # Ensure admins and app_settings tables exist
         Base.metadata.create_all(bind=engine, tables=[Admin.__table__, AppSetting.__table__])
     except Exception as e:
@@ -775,7 +795,9 @@ def get_assignment_for_game(assignment_id: int):
                 "question_text": q.question_text,  # Unity expects question_text, not text
                 "question_type": q.question_type,  # Unity expects question_type, not type
                 "points": q.points,
-                "help_video_url": q.help_video_url
+                "help_video_url": q.help_video_url,
+                "wrong_minigame": normalize_wrong_minigame_choice(q.wrong_minigame),
+                "punishment_minigame": normalize_wrong_minigame_choice(q.wrong_minigame)
             }
             
             # Add options for multiple choice and yes_no questions
@@ -1643,6 +1665,7 @@ def _legacy_question_payload(db, question):
         "question_description": question.question_text,
         "question_text": question.question_text,
         "tutorial_link": question.help_video_url or "",
+        "wrong_minigame": normalize_wrong_minigame_choice(getattr(question, "wrong_minigame", "randomized")),
         "difficulty": "easy",
         "answers": answers,
         "choices": choices,
@@ -2420,7 +2443,9 @@ def get_student_assignments_by_subject(request_data: dict):
                     "question_text": q.question_text,
                     "question_type": q.question_type,
                     "points": q.points,
-                    "help_video_url": q.help_video_url
+                    "help_video_url": q.help_video_url,
+                    "wrong_minigame": normalize_wrong_minigame_choice(q.wrong_minigame),
+                    "punishment_minigame": normalize_wrong_minigame_choice(q.wrong_minigame)
                 }
                 
                 # Add options for multiple choice and yes_no questions
@@ -3904,6 +3929,7 @@ def edit_assignment(assignment_id):
                     question_type=q_type,
                     points=points,
                     help_video_url=help_video_url,
+                    wrong_minigame=normalize_wrong_minigame_choice(q.get("wrong_minigame", "randomized")),
                     slot_count=0,
                     word_bank_json=None
                 )
@@ -3992,7 +4018,8 @@ def edit_assignment(assignment_id):
                 "text": question.question_text,
                 "type": question.question_type,
                 "points": question.points,
-                "help_video_url": question.help_video_url or ""
+                "help_video_url": question.help_video_url or "",
+                "wrong_minigame": normalize_wrong_minigame_choice(question.wrong_minigame)
             }
             
             if question.question_type == "multiple_choice":
