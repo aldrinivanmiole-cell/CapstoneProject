@@ -3565,6 +3565,17 @@ def view_assignment(assignment_id):
         for question in questions:
             question.options = db.query(QuestionOption).filter_by(question_id=question.id).all()
             question.correct_answers = db.query(CorrectAnswer).filter_by(question_id=question.id).all()
+
+            # Template expects option.is_correct for multiple-choice display badges.
+            if question.question_type == "multiple_choice":
+                correct_lookup = {
+                    (ans.answer_text or "").strip().lower()
+                    for ans in question.correct_answers
+                    if (ans.answer_text or "").strip()
+                }
+                for option in question.options:
+                    option_text = (option.option_text or "").strip().lower()
+                    option.is_correct = option_text in correct_lookup
         
         return render_template("view_assignment.html", assignment=assignment, questions=questions)
     
