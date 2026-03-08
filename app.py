@@ -210,6 +210,22 @@ def create_question_with_answers(db, assignment_id, question_data):
         for ans in correct_answers:
             db.add(CorrectAnswer(question_id=question.id, answer_text=ans))
 
+        # Optional word bank can include distractors.
+        raw_bank = question_data.get("word_bank", [])
+        if not raw_bank:
+            raw_bank = question_data.get("options", [])
+        word_bank = normalize_string_list(raw_bank)
+        if not word_bank:
+            word_bank = list(correct_answers)
+
+        seen_bank = set()
+        for item in word_bank:
+            key = item.lower().strip()
+            if not key or key in seen_bank:
+                continue
+            seen_bank.add(key)
+            db.add(QuestionOption(question_id=question.id, option_text=item))
+
     elif q_type == "yes_no":
         # Add Yes/No options
         for opt in question_data.get("options", ["Yes", "No"]):
@@ -746,6 +762,8 @@ def get_assignment_for_game(assignment_id: int):
                 correct_answers = db.query(CorrectAnswer).filter_by(question_id=q.id).order_by(CorrectAnswer.id.asc()).all()
                 q_data["correct_answers"] = [ca.answer_text for ca in correct_answers if ca.answer_text]
                 q_data["sentence"] = q.question_text
+                options = db.query(QuestionOption).filter_by(question_id=q.id).order_by(QuestionOption.id.asc()).all()
+                q_data["options"] = [opt.option_text for opt in options if opt.option_text]
 
             elif q.question_type in ["identification", "problem_solving", "essay"]:
                 correct_answers = db.query(CorrectAnswer).filter_by(question_id=q.id).order_by(CorrectAnswer.id.asc()).all()
@@ -1226,7 +1244,8 @@ def submit_assignment_from_game(assignment_id: int, submission_data: dict):
             if answer:
                 if question.question_type == "multiple_choice":
                     correct_answers = db.query(CorrectAnswer).filter_by(question_id=question.id).all()
-                    if any(ca.answer_text == answer for ca in correct_answers):
+                    answer_normalized = str(answer).strip().lower()
+                    if any((ca.answer_text or "").strip().lower() == answer_normalized for ca in correct_answers):
                         is_correct = True
                         points_earned = question.points
                 
@@ -3618,9 +3637,11 @@ def edit_assignment(assignment_id):
                     options = q.get("options", [])
                     correct_answers = q.get("correct_answers", [])
                     for opt in options:
-                        db.add(QuestionOption(question_id=question.id, option_text=opt))
+                        if str(opt).strip():
+                            db.add(QuestionOption(question_id=question.id, option_text=str(opt).strip()))
                     for ans in correct_answers:
-                        db.add(CorrectAnswer(question_id=question.id, answer_text=ans))
+                        if str(ans).strip():
+                            db.add(CorrectAnswer(question_id=question.id, answer_text=str(ans).strip()))
                 elif q_type == "enumeration":
                     correct_answers = normalize_string_list(q.get("correct_answers", []))
                     for ans in correct_answers:
@@ -3641,6 +3662,21 @@ def edit_assignment(assignment_id):
                     correct_answers = normalize_ordered_answers(q.get("correct_answers", []), max_items=3)
                     for ans in correct_answers:
                         db.add(CorrectAnswer(question_id=question.id, answer_text=ans))
+
+                    raw_bank = q.get("word_bank", [])
+                    if not raw_bank:
+                        raw_bank = q.get("options", [])
+                    word_bank = normalize_string_list(raw_bank)
+                    if not word_bank:
+                        word_bank = list(correct_answers)
+
+                    seen_bank = set()
+                    for item in word_bank:
+                        key = item.lower().strip()
+                        if not key or key in seen_bank:
+                            continue
+                        seen_bank.add(key)
+                        db.add(QuestionOption(question_id=question.id, option_text=item))
                 elif q_type == "problem_solving":
                     correct = q.get("correct_answer", "")
                     if correct:
@@ -3700,6 +3736,8 @@ def edit_assignment(assignment_id):
             elif question.question_type == "fill_in_the_blanks":
                 correct_answers = db.query(CorrectAnswer).filter_by(question_id=question.id).all()
                 q_data["correct_answers"] = [ans.answer_text for ans in correct_answers]
+                options = db.query(QuestionOption).filter_by(question_id=question.id).all()
+                q_data["word_bank"] = [opt.option_text for opt in options if opt.option_text]
             elif question.question_type == "yes_no":
                 options = db.query(QuestionOption).filter_by(question_id=question.id).all()
                 correct_answer = db.query(CorrectAnswer).filter_by(question_id=question.id).first()
