@@ -9,10 +9,15 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey,
 from sqlalchemy.orm import sessionmaker, relationship, joinedload
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import SQLAlchemyError
-import os, json, random, string, threading
+import os, json, random, string, threading, io
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
+
+try:
+    import qrcode
+except Exception:
+    qrcode = None
 # Database setup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(BASE_DIR, "school.db")
@@ -2200,7 +2205,7 @@ def get_student_profile(student_id: int):
                     "name": class_.name,
                     "section": class_.section,
                     "class_code": class_.class_code,
-                    "teacher_name": class_.teacher_name,
+                    "teacher_name": class_.teacher.full_name if class_.teacher else "Teacher",
                     "completed_assignments": completed_assignments,
                     "total_assignments": total_assignments
                 })
@@ -3049,7 +3054,8 @@ def create_class():
             # Admin goes back to admin classes, teacher back to dashboard
             if session.get("admin_id"):
                 return redirect(url_for("admin_classes"))
-            return redirect(url_for("index"))
+            flash(f"Class code: {new_class.class_code} (QR code available on class info page)", "info")
+            return redirect(url_for("class_info", class_id=new_class.id))
         except SQLAlchemyError as e:
             db.rollback()
             print(f"Error creating class: {str(e)}")
@@ -4342,6 +4348,42 @@ def class_info(class_id):
                              assignments=assignments,
                              assignment_stats=assignment_stats,
                              student_progress=student_progress)
+    finally:
+        db.close()
+
+@app.route("/class/<int:class_id>/qr")
+def class_qr_code(class_id):
+    if not session.get("teacher_id") and not session.get("admin_id"):
+        return redirect(url_for("login"))
+
+    if qrcode is None:
+        return "QR code library is not installed on the server.", 500
+
+    db = SessionLocal()
+    try:
+        if session.get("admin_id"):
+            class_ = db.query(Class).filter_by(id=class_id).first()
+        else:
+            class_ = db.query(Class).filter_by(id=class_id, teacher_id=session.get("teacher_id")).first()
+
+        if not class_:
+            return "Class not found", 404
+
+        qr = qrcode.QRCode(version=1, box_size=10, border=2)
+        qr.add_data((class_.class_code or "").strip())
+        qr.make(fit=True)
+
+        qr_image = qr.make_image(fill_color="black", back_color="white")
+        buffer = io.BytesIO()
+        qr_image.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            mimetype="image/png",
+            as_attachment=False,
+            download_name=f"class_{class_.id}_code_qr.png"
+        )
     finally:
         db.close()
 
