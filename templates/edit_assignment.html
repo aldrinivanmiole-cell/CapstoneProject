@@ -8,7 +8,12 @@
       <form id="assignmentForm" method="post">
   <div class="mb-3">
     <label class="form-label">assignment title</label>
-    <input type="text" class="form-control" name="title" value="{{ assignment.title }}" required>
+    <input type="text" class="form-control" name="title" value="{{ request.form.get('title', assignment.title) }}" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Deadline (optional)</label>
+    <input type="datetime-local" class="form-control" name="due_date" value="{{ request.form.get('due_date', assignment.due_date.strftime('%Y-%m-%dT%H:%M') if assignment.due_date else '') }}">
+    <div class="form-text">Students can no longer submit once this deadline has passed.</div>
   </div>
   <!-- Description removed -->
 
@@ -62,12 +67,26 @@ const typeOptions = [
   {value: 'essay', label: 'Essay'}
 ];
 
+const wrongMinigameOptions = [
+  { value: 'randomized', label: 'Randomized' },
+  { value: 'pacman', label: 'Pacman' },
+  { value: 'match_the_shape', label: 'Match the Shape' },
+  { value: 'flappy_bird', label: 'Flappy Bird' },
+  { value: 'memory_button', label: 'Memory Button' }
+];
+
 // Add IDs to existing questions for tracking
 questions.forEach((q, i) => {
   q.id = i + 1;
+  q.wrong_minigame = (q.wrong_minigame || 'randomized');
 });
 
 function renderQuestions() {
+  const optionLabel = (index) => {
+    if (index >= 0 && index < 26) return String.fromCharCode(65 + index);
+    return `#${index + 1}`;
+  };
+
   const container = document.getElementById('questions-container');
   container.innerHTML = '';
   questions.forEach((q, index) => {
@@ -83,19 +102,25 @@ function renderQuestions() {
         <textarea class="form-control question-text" rows="2">${q.text || ''}</textarea>
       </div>
       <div class="row g-3 mb-3">
-        <div class="col-md-6">
+        <div class="col-md-3">
           <label class="form-label">Type</label>
           <select class="form-select question-type">
             ${typeOptions.map(t => `<option value="${t.value}" ${t.value===q.type?'selected':''}>${t.label}</option>`).join('')}
           </select>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="form-label">Points</label>
           <input type="number" min="1" class="form-control question-points" value="${q.points}">
         </div>
-        <div class="col-md-4">
-          <label class="form-label">Help Video URL (optional)</label>
-          <input type="url" class="form-control help-video" value="${q.help_video_url || ''}" placeholder="YouTube URL">
+        <div class="col-md-3">
+          <label class="form-label">Wrong Answer Minigame</label>
+          <select class="form-select wrong-minigame">
+            ${wrongMinigameOptions.map(m => `<option value="${m.value}" ${((q.wrong_minigame || 'randomized')===m.value)?'selected':''}>${m.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Supplementary Link (optional)</label>
+          <input type="url" class="form-control help-video" value="${q.help_video_url || ''}" placeholder="https://youtube.com/... or https://drive.google.com/...">
         </div>
       </div>
       <div class="question-extra"></div>
@@ -109,10 +134,19 @@ function renderQuestions() {
     };
 
     const typeSelect = card.querySelector('.question-type');
+    const questionTextInput = card.querySelector('.question-text');
     const extraDiv = card.querySelector('.question-extra');
+    let refreshFibPreview = null;
+
+    function countFillBlanks(text) {
+      if (!text) return 0;
+      const matches = text.match(/___+/g);
+      return matches ? matches.length : 0;
+    }
 
     function renderExtra() {
       extraDiv.innerHTML = '';
+      refreshFibPreview = null;
       const qt = typeSelect.value;
       if (qt === 'multiple_choice') {
         extraDiv.innerHTML = `
@@ -120,43 +154,180 @@ function renderQuestions() {
           <div class="options-container"></div>
           <button type="button" class="btn btn-sm btn-outline-secondary add-option">Add option</button>`;
         const optContainer = extraDiv.querySelector('.options-container');
-        q.options = q.options || [];
+        q.options = (q.options || []).length ? q.options : [''];
+        q.correct_answer_index = Number.isInteger(q.correct_answer_index)
+          ? q.correct_answer_index
+          : Math.max(0, (q.correct_answers || []).length > 0 ? q.options.indexOf(q.correct_answers[0]) : 0);
         function renderOpts() {
           optContainer.innerHTML = '';
           q.options.forEach((opt, oi) => {
             const row = document.createElement('div');
             row.className = 'option-input';
-            row.innerHTML = `<input type="text" class="form-control option-text" value="${opt}">
-                             <span class="material-icons text-danger remove-opt" data-idx="${oi}">close</span>`;
+            row.innerHTML = `
+              <span class="badge bg-secondary align-self-center">${optionLabel(oi)}</span>
+              <input type="text" class="form-control option-text" value="${opt}" placeholder="Option ${oi + 1}">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="correct_${q.id}" id="correct_${q.id}_${oi}" ${q.correct_answer_index === oi ? 'checked' : ''}>
+                <label class="form-check-label" for="correct_${q.id}_${oi}">Correct</label>
+              </div>
+              <span class="material-icons text-danger remove-opt" data-idx="${oi}">close</span>`;
             optContainer.appendChild(row);
-            row.querySelector('.remove-opt').onclick = () => { q.options.splice(oi,1); renderOpts(); };
+            row.querySelector('.remove-opt').onclick = () => {
+              if (q.options.length <= 2) {
+                return;
+              }
+              q.options.splice(oi,1);
+              if (!q.options.length) q.options.push('');
+              if (q.correct_answer_index >= q.options.length)
+                q.correct_answer_index = Math.max(0, q.options.length - 1);
+              renderOpts();
+            };
             row.querySelector('.option-text').oninput = e => { q.options[oi] = e.target.value; };
+            row.querySelector('.form-check-input').onchange = e => {
+              if (e.target.checked)
+                q.correct_answer_index = oi;
+            };
+
+            if (q.options.length <= 2) {
+              const removeBtn = row.querySelector('.remove-opt');
+              if (removeBtn) {
+                removeBtn.style.opacity = '0.4';
+                removeBtn.style.cursor = 'not-allowed';
+              }
+            }
           });
         }
         renderOpts();
         extraDiv.querySelector('.add-option').onclick = () => { q.options.push(''); renderOpts(); };
       } else if (qt === 'enumeration') {
         extraDiv.innerHTML = `
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label">Slot Count (1-4)</label>
+              <input type="number" min="1" max="4" class="form-control enum-slot-count" value="${q.slot_count || 4}">
+            </div>
+          </div>
           <label class="form-label">Correct answers (one per line)</label>
-          <textarea class="form-control enum-answers" rows="3">${(q.correct_answers||[]).join('\n')}</textarea>`;
+          <textarea class="form-control enum-answers mb-3" rows="3">${(q.correct_answers||[]).join('\n')}</textarea>
+          <label class="form-label">Word bank (optional, one per line)</label>
+          <textarea class="form-control enum-word-bank" rows="3">${(q.word_bank||[]).join('\n')}</textarea>`;
         extraDiv.querySelector('.enum-answers').oninput = e => { q.correct_answers = e.target.value.split('\n').filter(Boolean); };
+        extraDiv.querySelector('.enum-word-bank').oninput = e => { q.word_bank = e.target.value.split('\n').map(v => v.trim()).filter(Boolean); };
+        extraDiv.querySelector('.enum-slot-count').oninput = e => {
+          const parsed = parseInt(e.target.value || '4', 10);
+          const bounded = Math.min(4, Math.max(1, isNaN(parsed) ? 4 : parsed));
+          q.slot_count = bounded;
+          e.target.value = bounded;
+        };
+      } else if (qt === 'identification') {
+        extraDiv.innerHTML = `
+          <label class="form-label">Correct answer</label>
+          <input type="text" class="form-control identification-answer" value="${q.correct_answer || (q.correct_answers && q.correct_answers[0]) || ''}">`;
+        extraDiv.querySelector('.identification-answer').oninput = e => {
+          q.correct_answer = e.target.value;
+          q.correct_answers = e.target.value ? [e.target.value] : [];
+        };
+      } else if (qt === 'fill_in_the_blanks') {
+        extraDiv.innerHTML = `
+          <div class="mb-2">
+            <small class="text-muted">Use ___ in question text and provide ordered answers (up to 3).</small>
+          </div>
+          <label class="form-label">Answers for blanks (one per line, ordered)</label>
+          <textarea class="form-control fib-answers" rows="3">${(q.correct_answers || []).slice(0, 3).join('\n')}</textarea>
+          <label class="form-label mt-3">Word Bank (include distractors, one per line)</label>
+          <textarea class="form-control fib-word-bank" rows="3" placeholder="Example:\nParis\nLondon\nManila">${(q.word_bank || []).join('\n')}</textarea>
+          <div class="mt-3">
+            <label class="form-label">Preview</label>
+            <small class="text-muted d-block mb-2">This shows what students will type for each blank.</small>
+            <div class="fib-preview border rounded p-3 bg-light"></div>
+          </div>`;
+
+        const previewBox = extraDiv.querySelector('.fib-preview');
+        function renderPreview() {
+          const blankCount = countFillBlanks(q.text || '');
+          const previewCount = Math.min(blankCount, 3);
+          if (!previewBox) return;
+
+          if (blankCount === 0) {
+            previewBox.innerHTML = '<div class="text-muted">Add ___ in the question text to generate answer fields preview.</div>';
+            return;
+          }
+
+          if (blankCount > 3) {
+            previewBox.innerHTML = '<div class="alert alert-warning py-2 mb-2">Only up to 3 blanks are allowed. Please reduce the number of ___ in the question text.</div>';
+          } else {
+            previewBox.innerHTML = '';
+          }
+
+          let html = '';
+          for (let i = 0; i < previewCount; i++) {
+            html += '<div class="mb-2"><input type="text" class="form-control" placeholder="Type your answer here" disabled></div>';
+          }
+          previewBox.innerHTML += html;
+        }
+
+        refreshFibPreview = renderPreview;
+        extraDiv.querySelector('.fib-answers').oninput = e => {
+          q.correct_answers = e.target.value
+            .split('\n')
+            .map(v => v.trim())
+            .filter(Boolean)
+            .slice(0, 3);
+        };
+        const wordBankInput = extraDiv.querySelector('.fib-word-bank');
+        if (wordBankInput) {
+          wordBankInput.oninput = () => {
+            q.word_bank = wordBankInput.value.split('\n').map(v => v.trim()).filter(Boolean);
+          };
+        }
+        renderPreview();
       } else if (qt === 'problem_solving') {
         extraDiv.innerHTML = `
           <label class="form-label">Correct answer</label>
           <input type="text" class="form-control ps-answer" value="${q.correct_answer||''}">`;
         extraDiv.querySelector('.ps-answer').oninput = e => { q.correct_answer = e.target.value; };
+      } else if (qt === 'yes_no') {
+        q.options = ['Yes', 'No'];
+        q.correct_answers = q.correct_answers || [];
+
+        extraDiv.innerHTML = `
+          <label class="form-label">Correct Answer</label>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="yes_no_${q.id}" value="Yes" ${(q.correct_answers.includes('Yes') || q.correct_answer === 'Yes') ? 'checked' : ''}>
+            <label class="form-check-label">Yes</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="yes_no_${q.id}" value="No" ${(q.correct_answers.includes('No') || q.correct_answer === 'No') ? 'checked' : ''}>
+            <label class="form-check-label">No</label>
+          </div>`;
+
+        extraDiv.querySelectorAll('input[type="radio"]').forEach(radio => {
+          radio.onchange = e => {
+            if (e.target.checked) {
+              q.correct_answer = e.target.value;
+              q.correct_answers = [e.target.value];
+            }
+          };
+        });
       }
       // essay: nothing extra
     }
     typeSelect.onchange = () => { q.type = typeSelect.value; renderExtra(); };
-    card.querySelector('.question-text').oninput = e => { q.text = e.target.value; };
+    questionTextInput.oninput = e => {
+      q.text = e.target.value;
+      if (typeof refreshFibPreview === 'function') {
+        refreshFibPreview();
+      }
+    };
     card.querySelector('.question-points').oninput = e => { q.points = parseInt(e.target.value)||1; };
+    card.querySelector('.wrong-minigame').onchange = e => { q.wrong_minigame = e.target.value || 'randomized'; };
+    card.querySelector('.help-video').oninput = e => { q.help_video_url = e.target.value; };
     renderExtra();
   });
 }
 
 document.getElementById('addQuestionBtn').onclick = () => {
-  questions.push({id: ++qId, text:'', type:'multiple_choice', points:1, options:[''], correct_answers:[]});
+  questions.push({id: ++qId, text:'', type:'multiple_choice', points:1, help_video_url:'', wrong_minigame:'randomized', options:[''], correct_answers:[]});
   renderQuestions();
 };
 
@@ -164,6 +335,46 @@ document.getElementById('addQuestionBtn').onclick = () => {
 renderQuestions();
 
 document.getElementById('assignmentForm').onsubmit = function(e){
+  for (const q of questions) {
+    if (q.type === 'fill_in_the_blanks') {
+      const blankCount = ((q.text || '').match(/___+/g) || []).length;
+      if (blankCount > 3) {
+        e.preventDefault();
+        alert('Fill in the Blanks questions are limited to only 3 blanks. Please reduce the number of ___ to 3 or less.');
+        return;
+      }
+    }
+  }
+
+  questions.forEach(q => {
+    q.help_video_url = (q.help_video_url || '').trim();
+    q.wrong_minigame = (q.wrong_minigame || 'randomized').trim() || 'randomized';
+
+    if (q.type === 'multiple_choice') {
+      q.options = (q.options || []).map(v => String(v || '').trim()).filter(Boolean);
+      if (q.options.length < 2) {
+        e.preventDefault();
+        alert('Multiple Choice questions need at least 2 options.');
+        return;
+      }
+      if (!Number.isInteger(q.correct_answer_index) || q.correct_answer_index < 0 || q.correct_answer_index >= q.options.length) {
+        q.correct_answer_index = q.options.length ? 0 : -1;
+      }
+      q.correct_answers = (q.correct_answer_index >= 0 && q.correct_answer_index < q.options.length)
+        ? [q.options[q.correct_answer_index]]
+        : [];
+      if (!q.correct_answers.length) {
+        e.preventDefault();
+        alert('Please select one correct answer for each Multiple Choice question.');
+        return;
+      }
+    }
+
+    if (q.type === 'fill_in_the_blanks') {
+      q.correct_answers = (q.correct_answers || []).map(v => String(v || '').trim()).filter(Boolean).slice(0, 3);
+      q.word_bank = (q.word_bank || []).map(v => String(v || '').trim()).filter(Boolean);
+    }
+  });
   // embed questions JSON
   document.getElementById('questionsInput').value = JSON.stringify(questions);
 };

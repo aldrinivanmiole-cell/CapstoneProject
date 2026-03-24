@@ -195,6 +195,7 @@ function addQuestionOfType(type) {
     type: type, 
     points: 1, 
     help_video_url: '',
+    difficulty: 'easy',
     correct_answers: []
   };
   
@@ -236,13 +237,21 @@ function renderQuestions() {
         <textarea class="form-control question-text" rows="2">${q.text || ''}</textarea>
       </div>
       <div class="row g-3 mb-3">
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="form-label">Type</label>
           <select class="form-select question-type">
             ${typeOptions.map(t => `<option value="${t.value}" ${t.value===q.type?'selected':''}>${t.label}</option>`).join('')}
           </select>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
+          <label class="form-label">Difficulty</label>
+          <select class="form-select question-difficulty">
+            <option value="easy" ${q.difficulty==='easy'?'selected':''}>Easy 😊</option>
+            <option value="medium" ${q.difficulty==='medium'?'selected':''}>Medium 🤔</option>
+            <option value="hard" ${q.difficulty==='hard'?'selected':''}>Hard 🔥</option>
+          </select>
+        </div>
+        <div class="col-md-2">
           <label class="form-label">Points</label>
           <input type="number" min="1" class="form-control question-points" value="${q.points}">
         </div>
@@ -451,6 +460,7 @@ function renderQuestions() {
     
     typeSelect.onchange = () => { q.type = typeSelect.value; renderExtra(); };
     card.querySelector('.question-text').oninput = e => { q.text = e.target.value; };
+    card.querySelector('.question-difficulty').onchange = e => { q.difficulty = e.target.value; };
     card.querySelector('.question-points').oninput = e => { q.points = parseInt(e.target.value)||1; };
     card.querySelector('.help-video').oninput = e => { q.help_video_url = e.target.value; };
     renderExtra();

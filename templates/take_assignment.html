@@ -6,6 +6,9 @@
     <div class="text-center mb-4">
       <h1 class="h3 mb-2">{{ assignment.title }}</h1>
       <p class="text-muted">{{ assignment.class_.name }}</p>
+      {% if assignment.due_date %}
+      <p class="text-muted mb-0">Deadline: {{ assignment.due_date.strftime('%b %d, %Y %I:%M %p') }}</p>
+      {% endif %}
       
     </div>
 
