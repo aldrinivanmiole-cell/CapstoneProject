@@ -122,17 +122,6 @@
     <input type="datetime-local" class="form-control" name="due_date" value="{{ request.form.get('due_date', '') }}">
     <div class="form-text">Students can no longer submit once this deadline has passed.</div>
   </div>
-  <div class="mb-3">
-    <label class="form-label">Wrong Answer Minigame</label>
-    <select class="form-select" name="wrong_minigame">
-      <option value="randomized" {{ 'selected' if request.form.get('wrong_minigame', 'randomized') == 'randomized' else '' }}>Randomized</option>
-      <option value="pacman" {{ 'selected' if request.form.get('wrong_minigame') == 'pacman' else '' }}>Pacman</option>
-      <option value="match_the_shape" {{ 'selected' if request.form.get('wrong_minigame') == 'match_the_shape' else '' }}>Match the Shape</option>
-      <option value="flappy_bird" {{ 'selected' if request.form.get('wrong_minigame') == 'flappy_bird' else '' }}>Flappy Bird</option>
-      <option value="memory_button" {{ 'selected' if request.form.get('wrong_minigame') == 'memory_button' else '' }}>Memory Button</option>
-    </select>
-    <div class="form-text">Choose which minigame students play when they get wrong answers.</div>
-  </div>
 
   <hr class="my-4">
   <h2 class="h5 mb-3">Questions</h2>
