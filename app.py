@@ -197,13 +197,14 @@ def is_assignment_overdue(assignment, now=None):
     current_time = now or datetime.utcnow()
     return assignment.due_date < current_time
 
-def create_question_with_answers(db, assignment_id, question_data):
+def create_question_with_answers(db, assignment_id, question_data, default_wrong_minigame="randomized"):
     """Create a question with its answers/options"""
     q_text = question_data.get("text", "").strip()
     q_type = question_data.get("type")
     points = int(question_data.get("points", 1))
     help_video_url = question_data.get("help_video_url", "").strip()
-    wrong_minigame = normalize_wrong_minigame_choice(question_data.get("wrong_minigame", "randomized"))
+    wrong_minigame_raw = question_data.get("wrong_minigame", "").strip()
+    wrong_minigame = normalize_wrong_minigame_choice(wrong_minigame_raw) if wrong_minigame_raw else default_wrong_minigame
 
     # Validate question type
     valid_types = ["multiple_choice", "identification", "enumeration", "problem_solving", "essay", "fill_in_the_blanks", "yes_no"]
@@ -386,6 +387,7 @@ class Assignment(Base):
     # Archive support
     is_archived = Column(Boolean, default=False)
     archived_at = Column(DateTime)
+    wrong_minigame = Column(String(32), default="randomized")
     class_ = relationship("Class", back_populates="assignments")
     questions = relationship("Question", back_populates="assignment", cascade="all, delete-orphan")
 
@@ -2410,10 +2412,19 @@ def get_student_assignments_by_subject(request_data: dict):
             matching_class_ids.append(class_.id)
             resolved_subject = class_.name or subject
         else:
-            for enrollment in enrollments:
+            # Subject-only fallback (legacy clients): select ONE enrolled class only,
+            # so classes from different teachers but same subject never get merged.
+            selected_class = None
+            for enrollment in sorted(enrollments, key=lambda e: int(getattr(e, "id", 0)), reverse=True):
                 class_ = db.query(Class).filter_by(id=enrollment.class_id).first()
                 if class_ and (not bool(class_.is_archived)) and _subjects_match(str(class_.name), subject):
-                    matching_class_ids.append(class_.id)
+                    selected_class = class_
+                    break
+
+            if selected_class is not None:
+                matching_class_ids.append(selected_class.id)
+                class_id = selected_class.id
+                resolved_subject = selected_class.name or subject
         
         if not matching_class_ids:
             # Return empty assignments if student isn't enrolled in this subject
@@ -3786,6 +3797,7 @@ def create_assignment(db, class_id):
     if request.method == "POST":
         title = request.form.get("title", "").strip()
         due_date_raw = request.form.get("due_date", "").strip()
+        wrong_minigame = normalize_wrong_minigame_choice(request.form.get("wrong_minigame", "randomized"))
         questions_json = request.form.get("questions", "[]")
         
         # Validate input data
@@ -3806,14 +3818,14 @@ def create_assignment(db, class_id):
         questions_data = result
 
         # Create assignment
-        assignment = Assignment(class_id=class_id, title=title, due_date=due_date)
+        assignment = Assignment(class_id=class_id, title=title, due_date=due_date, wrong_minigame=wrong_minigame)
         db.add(assignment)
         db.flush()
 
         # Create questions
         created_count = 0
         for question_data in questions_data:
-            if create_question_with_answers(db, assignment.id, question_data):
+            if create_question_with_answers(db, assignment.id, question_data, wrong_minigame):
                 created_count += 1
 
         if created_count == 0:
@@ -3888,6 +3900,7 @@ def edit_assignment(assignment_id):
         if request.method == "POST":
             title = request.form.get("title", "").strip()
             due_date_raw = request.form.get("due_date", "").strip()
+            wrong_minigame = normalize_wrong_minigame_choice(request.form.get("wrong_minigame", "randomized"))
             # description removed
             questions_json = request.form.get("questions", "[]")
             
@@ -3913,6 +3926,7 @@ def edit_assignment(assignment_id):
             # Update quiz details
             assignment.title = title
             assignment.due_date = due_date
+            assignment.wrong_minigame = wrong_minigame
             # description removed
             
             # Delete existing questions and rebuild
@@ -3935,7 +3949,7 @@ def edit_assignment(assignment_id):
                     question_type=q_type,
                     points=points,
                     help_video_url=help_video_url,
-                    wrong_minigame=normalize_wrong_minigame_choice(q.get("wrong_minigame", "randomized")),
+                    wrong_minigame=normalize_wrong_minigame_choice(q.get("wrong_minigame", wrong_minigame)),
                     slot_count=0,
                     word_bank_json=None
                 )
