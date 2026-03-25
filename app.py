@@ -2302,26 +2302,6 @@ def get_student_subjects(request_data: dict):
         
         for enrollment in enrollments:
             class_ = db.query(Class).filter_by(id=enrollment.class_id).first()
-<<<<<<< HEAD
-            if class_ and (not bool(class_.is_archived)) and class_.name not in processed_class_names:
-                latest_assignment = db.query(Assignment).filter_by(class_id=class_.id, is_archived=False).order_by(Assignment.created_at.desc()).first()
-                latest_activity_title = latest_assignment.title if latest_assignment else ""
-                latest_activity_type = ""
-                gameplay_type = determine_gameplay_type(class_.name)
-
-                if latest_assignment:
-                    latest_questions = db.query(Question).filter_by(assignment_id=latest_assignment.id).all()
-                    latest_question_types = [q.question_type for q in latest_questions]
-                    latest_activity_type = determine_assignment_gameplay_type(latest_question_types, class_.name)
-                    gameplay_type = latest_activity_type
-
-                teacher_name = "Teacher"
-                if class_.teacher:
-                    full_name = (class_.teacher.full_name or "").strip()
-                    if full_name:
-                        teacher_name = full_name
-
-=======
             if class_ and (not bool(class_.is_archived)) and class_.id not in processed_class_ids:
                 # Determine gameplay type based on subject name (dynamic)
                 gameplay_type = determine_gameplay_type(class_.name)
@@ -2337,7 +2317,6 @@ def get_student_subjects(request_data: dict):
                 latest_due_date = latest_assignment.due_date.isoformat() if latest_assignment and latest_assignment.due_date else None
                 latest_due_date_display = latest_assignment.due_date.strftime("%b %d, %Y %I:%M %p") if latest_assignment and latest_assignment.due_date else "No deadline"
                 
->>>>>>> update1
                 subjects.append({
                     "class_id": class_.id,
                     "class_code": class_.class_code,
@@ -2345,11 +2324,6 @@ def get_student_subjects(request_data: dict):
                     "subject_name": class_.name,
                     "teacher_name": teacher_name,
                     "gameplay_type": gameplay_type,
-<<<<<<< HEAD
-                    "latest_activity_title": latest_activity_title,
-                    "latest_activity_type": latest_activity_type,
-                    "has_activity": bool(latest_assignment)
-=======
                     "activity": latest_activity,
                     "activity_title": latest_activity,
                     "activity_type": gameplay_type,
@@ -2362,7 +2336,6 @@ def get_student_subjects(request_data: dict):
                     "latest_activity_title": latest_assignment.title if latest_assignment else "",
                     "latest_activity_type": gameplay_type if has_activity else "",
                     "has_activity": has_activity
->>>>>>> update1
                 })
                 processed_class_ids.add(class_.id)
         
@@ -2380,48 +2353,8 @@ def get_student_subjects(request_data: dict):
     finally:
         db.close()
 
-<<<<<<< HEAD
-@api.get("/student/class-directory", summary="Get Student Class Directory with Teacher Names")
-def get_student_class_directory(student_id: int):
-    db = SessionLocal()
-    try:
-        api_guard(db)
-        student = db.query(Student).filter_by(id=student_id).first()
-        if not student:
-            raise HTTPException(status_code=404, detail="Student not found")
 
-        enrollments = db.query(Enrollment).filter_by(student_id=student_id).all()
-        data = []
-
-        for enrollment in enrollments:
-            class_ = db.query(Class).filter_by(id=enrollment.class_id).first()
-            if not class_ or bool(class_.is_archived):
-                continue
-
-            teacher_name = "Teacher"
-            if class_.teacher:
-                full_name = (class_.teacher.full_name or "").strip()
-                if full_name:
-                    teacher_name = full_name
-
-            data.append({
-                "class_id": class_.id,
-                "subject_name": class_.name,
-                "teacher_name": teacher_name
-            })
-
-        return {"status": "success", "data": data}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    finally:
-        db.close()
-
-@api.post("/student/assignments", summary="Get Student Assignments by Subject")
-=======
 @api.post("/student/assignments", summary="Get Student Assignments by Subject or Class")
->>>>>>> update1
 def get_student_assignments_by_subject(request_data: dict):
     """
     Get all assignments for a student in a specific class, with subject-name fallback for older clients.
@@ -2576,14 +2509,8 @@ def get_student_assignments_by_subject(request_data: dict):
                 
                 question_list.append(q_data)
             
-<<<<<<< HEAD
-            # Determine gameplay type from real question types (not subject heuristic)
-            question_types = [q.question_type for q in questions]
-            gameplay_type = determine_assignment_gameplay_type(question_types, subject)
-=======
             # Determine assignment type from actual teacher-created questions
             gameplay_type = determine_assignment_activity_type(questions, resolved_subject)
->>>>>>> update1
 
             # Full structure (includes questions) with Unity-friendly aliases
             due_date_iso = assignment.due_date.isoformat() if assignment.due_date else None
