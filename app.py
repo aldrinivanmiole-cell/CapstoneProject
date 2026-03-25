@@ -204,6 +204,7 @@ def create_question_with_answers(db, assignment_id, question_data):
     points = int(question_data.get("points", 1))
     help_video_url = question_data.get("help_video_url", "").strip()
     wrong_minigame = normalize_wrong_minigame_choice(question_data.get("wrong_minigame", "randomized"))
+    print(f"[DEBUG create_question_with_answers] Input wrong_minigame: {question_data.get('wrong_minigame')}, Normalized: {wrong_minigame}")
 
     # Validate question type
     valid_types = ["multiple_choice", "identification", "enumeration", "problem_solving", "essay", "fill_in_the_blanks", "yes_no"]
@@ -805,6 +806,7 @@ def get_assignment_for_game(assignment_id: int):
                 "wrong_minigame": normalize_wrong_minigame_choice(q.wrong_minigame),
                 "punishment_minigame": normalize_wrong_minigame_choice(q.wrong_minigame)
             }
+            print(f"[DEBUG get_assignment_for_game] Question ID {q.id}: DB wrong_minigame={q.wrong_minigame}, normalized={q_data['wrong_minigame']}, punishment_minigame={q_data['punishment_minigame']}")
             
             # Add options for multiple choice and yes_no questions
             if q.question_type == "multiple_choice":

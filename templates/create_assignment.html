@@ -815,6 +815,7 @@ document.getElementById('assignmentForm').onsubmit = function(e){
     }
   });
   // embed questions JSON
+  console.log("Questions before sending:", JSON.stringify(questions, null, 2));
   document.getElementById('questionsInput').value = JSON.stringify(questions);
 };
 </script>
