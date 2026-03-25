@@ -2971,6 +2971,77 @@ def register():
             
     return render_template("register.html")
 
+@app.route("/register-student", methods=["POST"])
+def register_student():
+    try:
+        # Get form data from Unity
+        fname = request.form.get("fname", "").strip()
+        mname = request.form.get("mname", "").strip()
+        lname = request.form.get("lname", "").strip()
+        gender = request.form.get("gender", "").strip()
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        
+        # Basic validation
+        if not all([fname, lname, username, password]):
+            return JSONResponse(content={
+                "status": "ERROR",
+                "message": "First name, last name, username, and password are required"
+            }, status_code=400)
+        
+        # Combine names
+        full_name = f"{fname} {mname} {lname}".strip()
+        
+        # Create database session
+        db = SessionLocal()
+        try:
+            # Check if username already exists
+            existing_student = db.query(Student).filter_by(email=username).first()  # Using email field for username
+            if existing_student:
+                return JSONResponse(content={
+                    "status": "ERROR",
+                    "message": "Username already exists"
+                }, status_code=400)
+            
+            # Create new student
+            new_student = Student(
+                name=full_name,
+                email=username,  # Store username in email field
+                device_id="",    # Empty for now
+                grade_level="Grade 1",  # Default
+                total_points=0,
+                last_active=datetime.utcnow()
+            )
+            
+            # Set password hash
+            new_student.set_password(password)
+            
+            db.add(new_student)
+            db.commit()
+            
+            return JSONResponse(content={
+                "status": "SUCCESS",
+                "id": str(new_student.id),
+                "username": username,
+                "gender": gender,
+                "message": "Registration successful"
+            })
+            
+        except Exception as e:
+            db.rollback()
+            return JSONResponse(content={
+                "status": "ERROR",
+                "message": f"Database error: {str(e)}"
+            }, status_code=500)
+        finally:
+            db.close()
+            
+    except Exception as e:
+        return JSONResponse(content={
+            "status": "ERROR",
+            "message": f"Server error: {str(e)}"
+        }, status_code=500)
+
 @app.route("/logout")
 def logout():
     session.clear()
